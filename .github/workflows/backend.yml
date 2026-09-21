@@ -141,6 +141,9 @@ jobs:
       - name: Run database migrations
         run: docker compose run --rm backend alembic upgrade head
 
+      - name: Run database seed
+        run: docker compose run --rm backend python -m scripts.seed
+
       - name: Start backend
         run: docker compose up -d backend
 
