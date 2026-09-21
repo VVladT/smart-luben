@@ -27,8 +27,7 @@ services:
 
 
   backend:
-    build:
-      context: ./backend
+    image: ghcr.io/vvladt/smart-luben-backend:latest
 
     container_name: smart-luben-backend
 
@@ -45,8 +44,7 @@ services:
 
 
   frontend:
-    build:
-      context: ./frontend
+    image: ghcr.io/vvladt/smart-luben-frontend:latest
 
     container_name: smart-luben-frontend
 
