@@ -195,7 +195,7 @@ class TestMovimientos:
         data = response.json()
         assert all(m["tipo"] == "reposicion" for m in data)
         
-        response = await client.get(f"/api/espacios/{sample_espacio.id}/movimientos")
+        response = await client.get(f"/api/movimientos/espacio/{sample_espacio.id}")
         assert response.status_code == 200
         data = response.json()
         assert all(m["espacio_id"] == sample_espacio.id for m in data)

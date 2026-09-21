@@ -6,9 +6,12 @@ from app.routers import productos, espacios, movimientos, dashboard
 
 
 app = FastAPI(
-    title=settings.app_name,
+    title="SmartLuben API",
     description="API para gestión de exhibición y reposición de productos en mostrador de confitería",
     version="1.0.0",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
 )
 
 app.add_middleware(
