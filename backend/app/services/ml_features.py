@@ -67,8 +67,8 @@ class MLFeatureService:
             elif mov.tipo == TipoMovimiento.reposicion:
                 stats[key]['reposiciones'].append(mov.fecha_hora)
         
-        # 3. Calcular features agregadas
-        ahora = datetime.now()
+        # 3. Calcular features agregadas (aware UTC: fecha_hora en BD es timestamptz)
+        ahora = datetime.now(UTC_TZ)
         features_upsert = []
         
         for (espacio_id, producto_id, dow, hour), data in stats.items():
