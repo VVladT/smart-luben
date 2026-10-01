@@ -1,4 +1,4 @@
-.PHONY: install db migrate seed seed-movements materialize-features train-demand train-ranker backend frontend api-types ml-pipeline
+.PHONY: install db migrate seed seed-movements validate-movements clean-movements materialize-features train-demand train-ranker backend frontend api-types ml-pipeline
 
 install:
 	cd backend && python -m venv venv
@@ -15,7 +15,13 @@ seed:
 	cd backend && ./venv/bin/python scripts/seed.py
 
 seed-movements:
-	cd backend && ./venv/bin/python scripts/generate_synthetic_movements.py
+	cd backend && ./venv/bin/python scripts/generate_synthetic_movements.py --force
+
+validate-movements:
+	cd backend && ./venv/bin/python scripts/generate_synthetic_movements.py --validate-only
+
+clean-movements:
+	cd backend && ./venv/bin/python scripts/clean_movements.py --yes
 
 materialize-features:
 	cd backend && DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/smart_luben ./venv/bin/python scripts/materialize_ml_features.py

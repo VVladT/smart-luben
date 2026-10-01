@@ -103,8 +103,17 @@ def _parse_with_dateparser(mensaje: str, ahora: datetime) -> Optional[datetime]:
         )
         if not parsed:
             return None
-        
-        # Si dateparser no detectó hora (hour=0, minute=0, second=0), 
+
+        # dateparser con TIMEZONE devuelve hora pared de Lima naive:
+        # adjuntar LIMA_TZ para que el downstream la convierta bien a UTC.
+        # (Antes se asumía naive=UTC → desplazamiento de 5h en las sugerencias.)
+        def _en_lima(dt):
+            dt = dt.replace(second=0, microsecond=0)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=LIMA_TZ)
+            return dt
+
+        # Si dateparser no detectó hora (hour=0, minute=0, second=0),
         # puede ser que solo detectó fecha. Verificamos si hay hora explícita en el mensaje.
         if parsed.hour == 0 and parsed.minute == 0 and parsed.second == 0:
             # Verificar si hay hora explícita en el mensaje original
@@ -121,7 +130,7 @@ def _parse_with_dateparser(mensaje: str, ahora: datetime) -> Optional[datetime]:
                 pass
             else:
                 # Hora detectada por dateparser, confiar pero normalizar minutos a 0 si no se especificaron
-                return parsed.replace(second=0, microsecond=0)
+                return _en_lima(parsed)
         else:
             # Hora detectada por dateparser, confiar pero normalizar minutos a 0 si no se especificaron minutos
             if parsed.minute != 0:
@@ -131,8 +140,8 @@ def _parse_with_dateparser(mensaje: str, ahora: datetime) -> Optional[datetime]:
                     mensaje
                 ))
                 if not has_explicit_minutes:
-                    parsed = parsed.replace(minute=0, second=0, microsecond=0)
-            return parsed.replace(second=0, microsecond=0)
+                    parsed = parsed.replace(minute=0)
+            return _en_lima(parsed)
     except Exception:
         pass
     return None
@@ -294,10 +303,32 @@ def detectar_intencion_temporal(mensaje: str) -> Optional[datetime]:
         except ValueError:
             pass
     
-    # Caso B: Día de semana relativo (mañana, lunes, etc.)
+    # Caso B: día relativo ("mañana", "pasado mañana") o día de semana (lunes, etc.)
+    # OJO: "mañana"/"pasado mañana" son relativos (+1/+2 días), NO días de semana.
+    # Se chequean antes que PATRONES_TEMPORALES porque \bmañana\b matchea
+    # dentro de "pasado mañana" y "esta mañana".
     if not encontrado:
-        dias_offset = 0
+        dias_offset = None
+        if re.search(r"\bpasado\s+mañana\b", mensaje_lower):
+            dias_offset = 2
+        elif re.search(r"\besta\s+mañana\b", mensaje_lower):
+            dias_offset = 0
+        elif re.search(r"\bmañana\b", mensaje_lower) and not re.search(
+            r"\bpor\s+la\s+mañana\b|\bde\s+mañana\b|\ben\s+la\s+mañana\b|\blas\s+mañanas\b",
+            mensaje_lower,
+        ):
+            dias_offset = 1
+
+        if dias_offset is not None:
+            target_date = (_get_now() + timedelta(days=dias_offset)).replace(
+                hour=hora, minute=0, second=0, microsecond=0
+            )
+            encontrado = True
+
+    if not encontrado:
         for patron, dow in PATRONES_TEMPORALES:
+            if patron in (r"\bmañana\b", r"\bpasado mañana\b"):
+                continue  # ya manejados arriba como relativos
             if re.search(patron, mensaje.lower()):
                 if patron == r"\bhoy\b":
                     dias_offset = 0
@@ -353,6 +384,7 @@ def formatear_sugerencias_ml(sugerencias: Dict[str, Any], target_dt: Optional[da
     recs = sugerencias["recommendations"]
     disposition = sugerencias.get("disposition", {})
     metadata = sugerencias.get("metadata", {})
+    max_score = max((r.get("score", 0) for r in recs), default=0)
     
     lineas = [
         "SUGERENCIAS ML DE REPOSICIÓN (basadas en patrones históricos):"
@@ -369,13 +401,21 @@ def formatear_sugerencias_ml(sugerencias: Dict[str, Any], target_dt: Optional[da
         reason = rec.get("reason", "")
         demand_score = rec.get("demand_score", 0)
         ranker_score = rec.get("ranker_score", 0)
-        
-        conf = "alta" if score > 0.7 else "media" if score > 0.3 else "baja"
+
+        # Confianza relativa al mejor score (la escala absoluta de
+        # demand*ranker es ~1e-4..1e-2, los umbrales absolutos no aplican).
+        conf = "alta" if score >= 0.8 * max_score else "media" if score >= 0.4 * max_score else "baja"
         lineas.append(f"  - {space}: {product} (confianza {conf}, demanda={demand_score:.2f}, afinidad={ranker_score:.2f}) - {reason}")
     
     if disposition:
         lineas.append("\nDISPOSICIÓN SUGERIDA:")
         for space, product in disposition.items():
+            lineas.append(f"  {space} → {product}")
+
+    occupied = sugerencias.get("occupied", {})
+    if occupied:
+        lineas.append("\nESPACIOS OCUPADOS (sin sugerencia, ya tienen producto):")
+        for space, product in occupied.items():
             lineas.append(f"  {space} → {product}")
     
     lineas.append(f"\nMetadatos: {metadata.get('free_spaces_count', 0)} espacios libres, "
@@ -543,12 +583,12 @@ DATOS ACTUALES DEL SISTEMA SMARTLUBEN:
 async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) -> str:
     """Obtiene sugerencias ML directamente usando los servicios (sin HTTP)."""
     try:
-        # Convertir a UTC para que coincida con cómo se almacenaron las features ML (en UTC)
+        # Convertir a UTC para que coincida con cómo se almacenaron las features ML (en UTC).
+        # Un naive se interpreta como hora pared de Lima (no UTC).
         if target_dt.tzinfo is not None:
             target_dt_utc = target_dt.astimezone(timezone.utc)
         else:
-            # Si es naive, asumir que está en UTC
-            target_dt_utc = target_dt.replace(tzinfo=timezone.utc)
+            target_dt_utc = target_dt.replace(tzinfo=LIMA_TZ).astimezone(timezone.utc)
         
         print(f"DEBUG _get_ml_suggestions_internal: target_dt={target_dt}, tzinfo={target_dt.tzinfo}, target_dt_utc={target_dt_utc}, hour_utc={target_dt_utc.hour}, minute={target_dt_utc.minute}")
         # 1. Obtener espacios libres y productos activos
@@ -588,7 +628,6 @@ async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) ->
             space_product_scores[(f['espacio_id'], f['producto_id'])] = score
         
         # 5. Optimizador Greedy
-        from app.services.disposition_optimizer import GreedyDispositionOptimizer, build_space_info_from_db
         space_infos = build_space_info_from_db(free_spaces)
         
         optimizer = GreedyDispositionOptimizer(max_product_share=0.5)
@@ -632,9 +671,15 @@ async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) ->
         }
         
         # Formatear como texto para el contexto
+        occupied = {
+            e.codigo: producto_map.get(e.producto_actual_id, "desconocido")
+            for e in espacios
+            if e.estado == EstadoEspacio.ocupado
+        }
         sugerencias = {
             "recommendations": recommendations,
             "disposition": disposition,
+            "occupied": occupied,
             "metadata": metadata
         }
         

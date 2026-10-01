@@ -48,6 +48,7 @@ class SuggestionMetadata(BaseModel):
 class MLSuggestionResponse(BaseModel):
     recommendations: List[SpaceProductRecommendation]
     disposition: dict[str, str]  # espacio_codigo -> producto_nombre
+    occupied: dict[str, str] = {}  # espacios ocupados (sin sugerencia) codigo -> producto_nombre
     metadata: SuggestionMetadata
 
 
@@ -92,6 +93,11 @@ async def suggest_replenishment(
         return MLSuggestionResponse(
             recommendations=[],
             disposition={},
+            occupied={
+                e.codigo: (producto_map.get(e.producto_actual_id, "desconocido"))
+                for e in espacios
+                if e.estado == EstadoEspacio.ocupado
+            },
             metadata=SuggestionMetadata(
                 free_spaces_count=len(free_spaces),
                 productos_recommended=0,
@@ -160,10 +166,17 @@ async def suggest_replenishment(
     
     # Metadata
     max_per_product = max(1, int(len(free_spaces) * 0.5))
-    
+
+    occupied = {
+        e.codigo: producto_map.get(e.producto_actual_id, "desconocido")
+        for e in espacios
+        if e.estado == EstadoEspacio.ocupado
+    }
+
     return MLSuggestionResponse(
         recommendations=recommendations,
         disposition=disposition,
+        occupied=occupied,
         metadata=SuggestionMetadata(
             free_spaces_count=len(free_spaces),
             productos_recommended=len(set(disposition.values())),

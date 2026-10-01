@@ -160,9 +160,15 @@ def seleccionar_producto_ponderado(
 class SpaceState:
     def __init__(self, espacio: Espacio):
         self.espacio = espacio
-        self.estado = EstadoEspacio.libre
-        self.producto_actual_id = None
+        # Inicializar desde el estado REAL en BD (no asumir libre):
+        # si el espacio está ocupado, el primer evento debe ser su salida.
+        self.estado = espacio.estado
+        self.producto_actual_id = espacio.producto_actual_id
         self.fila = extraer_fila(espacio.ubicacion)
+
+        if self.estado == EstadoEspacio.ocupado and self.producto_actual_id is None:
+            print(f"  AVISO: espacio {espacio.codigo} figura ocupado sin producto; se trata como libre.")
+            self.estado = EstadoEspacio.libre
     
     def ocupar(self, producto_id: int):
         self.estado = EstadoEspacio.ocupado
@@ -195,12 +201,33 @@ async def generate_synthetic_movements(db: AsyncSession):
     
     space_states = {e.id: SpaceState(e) for e in espacios_db}
     salidas_pendientes: List[Tuple[datetime, int, int]] = []  # (fecha_utc, espacio_id, producto_id)
-    
+
     # Usar zona horaria de Lima para la generación
     ahora_lima = datetime.now(LIMA_TZ)
     fecha_inicio = ahora_lima - timedelta(days=DIAS_HISTORIA)
     fecha_fin = datetime.now(LIMA_TZ)
-    
+
+    # Coherencia con el estado real: los espacios que arrancan ocupados
+    # cierran su ciclo con la salida del producto actual.
+    # Se fecha a las 00:00 Lima del primer día (antes de HORARIO_INICIO),
+    # para que cronológicamente preceda a todo evento generado del día 1.
+    # Sin esto se generan reposiciones huérfanas (dos reposiciones seguidas).
+    inicio_dia_lima = fecha_inicio.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio_dia_utc = inicio_dia_lima.astimezone(UTC_TZ)
+    total_salidas_iniciales = 0
+    for state in space_states.values():
+        if state.esta_ocupado and state.producto_actual_id is not None:
+            await MovimientoService.create(db, MovimientoCreate(
+                espacio_id=state.espacio.id,
+                producto_id=state.producto_actual_id,
+                tipo=TipoMovimiento.salida,
+                fecha_hora=inicio_dia_utc
+            ))
+            state.liberar()
+            total_salidas_iniciales += 1
+    if total_salidas_iniciales:
+        print(f"Salidas iniciales de sinceramiento: {total_salidas_iniciales}")
+
     total_reposiciones = 0
     total_salidas = 0
     
@@ -309,20 +336,53 @@ async def generate_synthetic_movements(db: AsyncSession):
         
         dia_actual += timedelta(days=1)
     
-    print(f"\nTotal movimientos creados: {total_reposiciones + total_salidas}")
+    print(f"\nTotal movimientos creados: {total_reposiciones + total_salidas + total_salidas_iniciales}")
     print(f"  Reposiciones: {total_reposiciones}")
-    print(f"  Salidas: {total_salidas}")
+    print(f"  Salidas: {total_salidas + total_salidas_iniciales}")
+
+    # Persistir el estado final coherente en la tabla espacios
+    # (antes el generador nunca lo tocaba y quedaba desincronizado).
+    for state in space_states.values():
+        state.espacio.estado = state.estado
+        state.espacio.producto_actual_id = state.producto_actual_id
+    await db.commit()
+    print("Estados finales de espacios persistidos.")
+
+    # Validador: reporta rupturas de alternancia reposición→salida por espacio
+    await validar_alternancia(db)
 
 
-async def main(force: bool = False):
+async def validar_alternancia(db: AsyncSession) -> int:
+    """Verifica que por espacio no haya dos movimientos consecutivos del mismo tipo.
+    Solo reporta (no borra). Retorna el nro de rupturas."""
+    espacios = await EspacioService.get_all(db)
+    rupturas = 0
+    for e in espacios:
+        movs = await MovimientoService.get_by_espacio(db, e.id)
+        movs = sorted(movs, key=lambda m: m.fecha_hora)
+        for prev, cur in zip(movs, movs[1:]):
+            if prev.tipo == cur.tipo:
+                rupturas += 1
+                if rupturas <= 10:
+                    print(f"  HUÉRFANO: espacio {e.codigo} {prev.tipo.value} "
+                          f"({prev.fecha_hora}) seguido de {cur.tipo.value} ({cur.fecha_hora})")
+    print(f"Validación de alternancia: {rupturas} rupturas en {len(espacios)} espacios.")
+    return rupturas
+
+
+async def main(force: bool = False, validate_only: bool = False):
     engine = create_async_engine(settings.database_url, echo=False)
-    
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    
+
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    
+
     async with AsyncSessionLocal() as db:
+        if validate_only:
+            await validar_alternancia(db)
+            await engine.dispose()
+            return
         existing = await db.execute(select(Movimiento))
         if existing.scalars().first() and not force:
             # No interactivo (CI/deploy): exigir --force en vez de colgarse en input()
@@ -347,6 +407,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Genera movimientos sintéticos")
     parser.add_argument("--force", action="store_true", help="No pedir confirmación aunque existan movimientos")
+    parser.add_argument("--validate-only", action="store_true", help="Solo valida alternancia reposición→salida, sin generar")
     args = parser.parse_args()
     force = args.force or os.getenv("FORCE") == "true"
-    asyncio.run(main(force=force))
+    asyncio.run(main(force=force, validate_only=args.validate_only))
