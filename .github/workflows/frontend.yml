@@ -109,10 +109,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verificar .env del host
+      - name: Restore .env
         run: |
-          if [ ! -f .env ]; then
-            echo "::error::Falta el archivo .env junto al repo en el host (se ignora en git). Créalo a partir de .env.example."
+          if [ -f ../.env ]; then
+            cp ../.env .env
+          elif [ ! -f .env ]; then
+            echo "::error::Falta .env: ni ../.env ni ./.env existen. Créalo a partir de .env.example."
             exit 1
           fi
 
