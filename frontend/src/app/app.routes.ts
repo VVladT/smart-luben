@@ -23,6 +23,12 @@ export const routes: Routes = [
     loadComponent: () => import('./features/movimientos/movimientos.page').then((m) => m.MovimientosPageComponent),
   },
   {
+    path: 'chatbot',
+    loadComponent: () =>
+      import('./features/chatbot/chatbot.page')
+        .then((m) => m.ChatbotPageComponent),
+  },
+  {
     path: '**',
     redirectTo: '/dashboard',
   },

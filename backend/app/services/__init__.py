@@ -4,7 +4,7 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime
 
-from app.models import Producto, Espacio, Movimiento, EstadoEspacio, TipoMovimiento
+from app.models import Producto, Espacio, Movimiento, EstadoEspacio, TipoMovimiento, MlFeature
 from app.schemas import (
     ProductoCreate,
     ProductoUpdate,
@@ -184,7 +184,11 @@ class MovimientoService:
 
     @staticmethod
     async def create(db: AsyncSession, movimiento_data: MovimientoCreate) -> Movimiento:
-        movimiento = Movimiento(**movimiento_data.model_dump())
+        data = movimiento_data.model_dump()
+        fecha_hora = data.pop("fecha_hora", None)
+        movimiento = Movimiento(**data)
+        if fecha_hora:
+            movimiento.fecha_hora = fecha_hora
         db.add(movimiento)
         await db.commit()
         await db.refresh(movimiento)
@@ -266,3 +270,6 @@ class DashboardService:
             espacios_ocupados=espacios_ocupados.scalar() or 0,
             productos_activos=productos_activos.scalar() or 0
         )
+
+
+from app.services.ml_features import MLFeatureService

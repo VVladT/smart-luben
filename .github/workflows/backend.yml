@@ -21,6 +21,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/smart-luben-backend
 
+concurrency:
+  group: prod-deploy
+  cancel-in-progress: false
+
 
 jobs:
 
@@ -60,7 +64,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: backend/requirements.txt
 
@@ -121,12 +125,20 @@ jobs:
 
     needs: build
 
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    timeout-minutes: 60
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore config
-        run: cp ../.env .env
+      - name: Verificar .env del host
+        run: |
+          if [ ! -f .env ]; then
+            echo "::error::Falta el archivo .env junto al repo en el host (se ignora en git). Créalo a partir de .env.example."
+            exit 1
+          fi
 
       - name: Login to GHCR
         uses: docker/login-action@v3
@@ -141,11 +153,25 @@ jobs:
       - name: Run database migrations
         run: docker compose run --rm backend alembic upgrade head
 
-      - name: Run database seed
-        run: docker compose run --rm backend python -m scripts.seed
+      - name: Run database seed (idempotente, 4 espacios)
+        run: docker compose run --rm backend python scripts/seed.py
+
+      - name: Generate synthetic movements
+        env:
+          FORCE: "true"
+        run: docker compose run --rm -e FORCE=true backend python scripts/generate_synthetic_movements.py --force
+
+      - name: Materialize ML features
+        run: docker compose run --rm backend python scripts/materialize_ml_features.py
+
+      - name: Train demand model
+        run: docker compose run --rm backend python ml/train_demand.py
+
+      - name: Train ranker model
+        run: docker compose run --rm backend python ml/train_ranker.py
 
       - name: Start backend
-        run: docker compose up -d backend
+        run: docker compose up -d db backend
 
       - name: Check backend status
-        run: docker compose ps backend
+        run: docker compose ps db backend

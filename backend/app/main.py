@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import productos, espacios, movimientos, dashboard
+from app.routers import productos, espacios, movimientos, dashboard, chatbot, ml_suggestions
 
 
 app = FastAPI(
@@ -26,6 +26,8 @@ app.include_router(productos.router, prefix="/api")
 app.include_router(espacios.router, prefix="/api")
 app.include_router(movimientos.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(chatbot.router, prefix="/api")
+app.include_router(ml_suggestions.router, prefix="/api")
 
 
 @app.get("/", tags=["root"])

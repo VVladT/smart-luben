@@ -1,0 +1,123 @@
+<div class="max-w-5xl mx-auto p-6">
+
+  <div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">
+      LubenBot
+    </h1>
+
+    <p class="text-gray-600 mt-2">
+      Asistente inteligente de SmartLuben
+    </p>
+  </div>
+
+
+  <div
+    class="bg-white rounded-xl shadow-lg overflow-hidden"
+  >
+
+    <div
+      class="bg-indigo-600 text-white px-6 py-4"
+    >
+      <h2 class="font-semibold">
+        Asistente de reposición
+      </h2>
+
+      <p class="text-sm text-indigo-100">
+        Consulta información sobre productos,
+        espacios y reposiciones.
+      </p>
+    </div>
+
+
+    <div
+      class="h-[500px] overflow-y-auto p-6 bg-gray-50"
+    >
+
+      @for (message of messages; track $index) {
+
+        <div
+          class="mb-4 flex"
+          [class.justify-end]="message.sender === 'user'"
+          [class.justify-start]="message.sender === 'bot'"
+        >
+
+          <div
+            class="max-w-[75%] rounded-xl px-4 py-3"
+            [class.bg-indigo-600]="message.sender === 'user'"
+            [class.text-white]="message.sender === 'user'"
+            [class.bg-white]="message.sender === 'bot'"
+            [class.text-gray-800]="message.sender === 'bot'"
+            [class.shadow]="message.sender === 'bot'"
+          >
+            {{ message.text }}
+          </div>
+
+        </div>
+
+      }
+
+
+      @if (loading) {
+
+        <div class="flex justify-start">
+
+          <div
+            class="bg-white text-gray-500 shadow rounded-xl px-4 py-3"
+          >
+            LubenBot está pensando...
+          </div>
+
+        </div>
+
+      }
+
+    </div>
+
+
+    <div
+      class="border-t bg-white p-4 flex gap-3"
+    >
+
+      <input
+        [(ngModel)]="message"
+        (keyup.enter)="sendMessage()"
+        type="text"
+        placeholder="Escribe una consulta..."
+        class="
+          flex-1
+          border
+          border-gray-300
+          rounded-lg
+          px-4
+          py-3
+          focus:outline-none
+          focus:ring-2
+          focus:ring-indigo-500
+        "
+      >
+
+
+      <button
+        type="button"
+        (click)="sendMessage()"
+        [disabled]="loading || !message.trim()"
+        class="
+          bg-indigo-600
+          hover:bg-indigo-700
+          disabled:bg-gray-400
+          text-white
+          px-6
+          py-3
+          rounded-lg
+          font-medium
+          transition-colors
+        "
+      >
+        Enviar
+      </button>
+
+    </div>
+
+  </div>
+
+</div>

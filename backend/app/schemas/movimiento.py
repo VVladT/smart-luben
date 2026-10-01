@@ -11,7 +11,7 @@ class MovimientoBase(BaseModel):
 
 
 class MovimientoCreate(MovimientoBase):
-    pass
+    fecha_hora: datetime | None = None
 
 
 class MovimientoResponse(MovimientoBase):

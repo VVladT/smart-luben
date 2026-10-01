@@ -36,6 +36,10 @@ backend/build/
 backend/dist/
 backend/*.egg-info/
 
+# ML model artifacts (se re-entrenan en cada deploy, no versionar)
+backend/models/*.pkl
+backend/models/*_meta.json
+
 # Local Python tooling
 .python-version
 
