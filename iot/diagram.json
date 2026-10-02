@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "author": "Víctor Tuñoque",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": -48, "left": 480, "attrs": {} },
+
+    { "type": "chip-fsr-sensor", "id": "fsr1", "top": -140, "left": -180, "attrs": {} },
+    { "type": "wokwi-resistor", "id": "r1", "top": 10, "left": -186.4, "attrs": { "value": "1000" } },
+
+    { "type": "chip-fsr-sensor", "id": "fsr2", "top": -140, "left": -20, "attrs": {} },
+    { "type": "wokwi-resistor", "id": "r2", "top": 10, "left": -28.8, "attrs": { "value": "1000" } },
+
+    { "type": "chip-fsr-sensor", "id": "fsr3", "top": -140, "left": 140, "attrs": {} },
+    { "type": "wokwi-resistor", "id": "r3", "top": 10, "left": 128.8, "attrs": { "value": "1000" } },
+
+    { "type": "chip-fsr-sensor", "id": "fsr4", "top": -140, "left": 300, "attrs": {} },
+    { "type": "wokwi-resistor", "id": "r4", "top": 10, "left": 286.4, "attrs": { "value": "1000" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "esp:3V3", "fsr1:P1", "red", [ "v-19.2", "h-591.2", "v96" ] ],
+    [ "fsr1:P1", "fsr2:P1", "red", [ "v19.2", "h160", "v-19.2" ] ],
+    [ "fsr2:P1", "fsr3:P1", "red", [ "v19.2", "h160", "v-19.2" ] ],
+    [ "fsr3:P1", "fsr4:P1", "red", [ "v19.2", "h160", "v-19.2" ] ],
+
+    [ "fsr1:P2", "esp:32", "blue", [ "v0" ] ],
+    [ "fsr2:P2", "esp:33", "blue", [ "v0" ] ],
+    [ "fsr3:P2", "esp:34", "blue", [ "v0" ] ],
+    [ "fsr4:P2", "esp:35", "blue", [ "v0" ] ],
+
+    [ "fsr1:P2", "r1:1", "blue", [ "v0" ] ],
+    [ "fsr2:P2", "r2:1", "blue", [ "v0" ] ],
+    [ "fsr3:P2", "r3:1", "blue", [ "v0" ] ],
+    [ "fsr4:P2", "r4:1", "blue", [ "v0" ] ],
+
+    [ "r1:2", "esp:GND.1", "black", [ "h0" ] ],
+    [ "r2:2", "esp:GND.1", "black", [ "h0" ] ],
+    [ "r3:2", "esp:GND.1", "black", [ "h0" ] ],
+    [ "r4:2", "esp:GND.1", "black", [ "h0" ] ]
+  ],
+  "dependencies": {}
+}

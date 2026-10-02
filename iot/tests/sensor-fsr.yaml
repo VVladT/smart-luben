@@ -1,0 +1,35 @@
+name: 'FSR ocupación/liberación (solo detección, sin red)'
+version: 1
+author: 'SmartLuben CI'
+
+# Verifica la máquina de estados + anti-rebote del firmware.
+# NO requiere API: la detección se loguea antes e independiente del envío
+# (API_BASE_URL apunta a blackhole en CI; los reintentos fallan con gracia).
+steps:
+  - wait-serial: '--- SmartLuben IoT v1.0 ---'
+
+  # S1: ocupar (force 20 -> ~400g, sobre el umbral de 150g)
+  - set-control:
+      part-id: fsr1
+      control: force
+      value: 20
+  - wait-serial: 'S1 OCUPADO'
+
+  # S1: liberar
+  - set-control:
+      part-id: fsr1
+      control: force
+      value: 0
+  - wait-serial: 'S1 LIBRE'
+
+  # S3: independencia por sensor
+  - set-control:
+      part-id: fsr3
+      control: force
+      value: 20
+  - wait-serial: 'S3 OCUPADO'
+  - set-control:
+      part-id: fsr3
+      control: force
+      value: 0
+  - wait-serial: 'S3 LIBRE'

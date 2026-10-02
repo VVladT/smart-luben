@@ -1,7 +1,10 @@
 from datetime import datetime
-from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from typing import Literal, Optional
+from pydantic import BaseModel, ConfigDict, computed_field
 from app.models import EstadoEspacio
+
+
+SituacionEspacio = Literal["libre", "pendiente", "ocupado", "desconocido"]
 
 
 class EspacioBase(BaseModel):
@@ -25,6 +28,16 @@ class EspacioResponse(EspacioBase):
     creado_en: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def situacion(self) -> SituacionEspacio:
+        """Estado visual calculado (response-only, no se persiste):
+        libre+producto = pendiente de reposición,
+        ocupado sin producto = desconocido."""
+        if self.estado == EstadoEspacio.libre:
+            return "pendiente" if self.producto_actual_id is not None else "libre"
+        return "desconocido" if self.producto_actual_id is None else "ocupado"
 
 
 class EspacioConProductoResponse(EspacioResponse):

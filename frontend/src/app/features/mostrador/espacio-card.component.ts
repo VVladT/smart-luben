@@ -1,6 +1,7 @@
 import { Component, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EspacioConProductoResponse, EstadoEspacio } from '../../core/api/generated/types';
+import { resolveStorageUrl } from '../../core/api/api-client';
 
 @Component({
   selector: 'sl-espacio-card',
@@ -28,11 +29,11 @@ import { EspacioConProductoResponse, EstadoEspacio } from '../../core/api/genera
         </span>
       </div>
 
-      @if (espacio().estado === 'ocupado' && espacio().producto_actual) {
+      @if (espacio().producto_actual) {
         <div class="mb-3">
-          @if (espacio().producto_actual!.imagen_url) {
+          @if (imagenProducto()) {
             <img
-              [src]="espacio().producto_actual!.imagen_url"
+              [src]="imagenProducto()"
               [alt]="espacio().producto_actual!.nombre"
               class="w-full h-32 object-cover rounded-lg mb-2"
               loading="lazy"
@@ -58,16 +59,34 @@ import { EspacioConProductoResponse, EstadoEspacio } from '../../core/api/genera
             />
           </svg>
         </div>
-        <p class="text-center text-gray-400 text-sm mb-3">Espacio libre</p>
+        @if (situacion() === 'desconocido') {
+          <p class="text-center text-red-500 text-sm mb-3">Producto desconocido</p>
+        } @else {
+          <p class="text-center text-gray-400 text-sm mb-3">Espacio libre</p>
+        }
       }
 
       <div class="flex space-x-2">
-        @if (espacio().estado === 'libre') {
+        @if (situacion() === 'libre') {
           <button
             (click)="reponer.emit(espacio())"
             class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
           >
             Reponer
+          </button>
+        } @else if (situacion() === 'pendiente') {
+          <button
+            (click)="confirmar.emit(espacio())"
+            class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+          >
+            Confirmar reposición
+          </button>
+          <button
+            (click)="cancelarPlan.emit(espacio())"
+            title="Cancelar el producto planificado"
+            class="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+            Cancelar
           </button>
         } @else {
           <button
@@ -85,21 +104,54 @@ import { EspacioConProductoResponse, EstadoEspacio } from '../../core/api/genera
 export class EspacioCardComponent {
   readonly espacio = input.required<EspacioConProductoResponse>();
   readonly reponer = output<EspacioConProductoResponse>();
+  readonly confirmar = output<EspacioConProductoResponse>();
+  readonly cancelarPlan = output<EspacioConProductoResponse>();
   readonly liberar = output<EspacioConProductoResponse>();
 
+  imagenProducto(): string | null {
+    return resolveStorageUrl(this.espacio().producto_actual?.imagen_url);
+  }
+
+  readonly situacion = computed(() => {
+    return this.espacio().situacion ?? (this.espacio().estado === 'libre' ? 'libre' : 'ocupado');
+  });
+
   readonly estadoLabel = computed(() => {
-    return this.espacio().estado === 'libre' ? 'LIBRE' : 'OCUPADO';
+    switch (this.situacion()) {
+      case 'pendiente':
+        return 'PENDIENTE';
+      case 'desconocido':
+        return 'DESCONOCIDO';
+      case 'ocupado':
+        return 'OCUPADO';
+      default:
+        return 'LIBRE';
+    }
   });
 
   readonly cardClasses = computed(() => {
-    const estado = this.espacio().estado;
-    return estado === 'libre'
-      ? 'bg-gray-50 border-gray-200 hover:border-gray-300'
-      : 'bg-green-50 border-green-200 hover:border-green-300';
+    switch (this.situacion()) {
+      case 'pendiente':
+        return 'bg-amber-50 border-amber-200 hover:border-amber-300';
+      case 'desconocido':
+        return 'bg-red-50 border-red-200 hover:border-red-300';
+      case 'ocupado':
+        return 'bg-green-50 border-green-200 hover:border-green-300';
+      default:
+        return 'bg-gray-50 border-gray-200 hover:border-gray-300';
+    }
   });
 
   readonly badgeClasses = computed(() => {
-    const estado = this.espacio().estado;
-    return estado === 'libre' ? 'bg-gray-100 text-gray-700' : 'bg-green-100 text-green-700';
+    switch (this.situacion()) {
+      case 'pendiente':
+        return 'bg-amber-100 text-amber-700';
+      case 'desconocido':
+        return 'bg-red-100 text-red-700';
+      case 'ocupado':
+        return 'bg-green-100 text-green-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
   });
 }

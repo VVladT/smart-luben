@@ -1,0 +1,23 @@
+{
+  "type": "PLANAR",
+  "properties": {
+    "left": 0,
+    "top": 0,
+    "width": 1500,
+    "height": 2000,
+    "isRotated": false,
+    "originalWidth": 1500,
+    "originalHeight": 2000
+  },
+  "imagePath": "image-targets/space_04_luminance.png",
+  "metadata": null,
+  "name": "space_04",
+  "resources": {
+    "originalImage": "space_04_original.png",
+    "croppedImage": "space_04_cropped.png",
+    "thumbnailImage": "space_04_thumbnail.png",
+    "luminanceImage": "space_04_luminance.png"
+  },
+  "created": 1790807983828,
+  "updated": 1790807983828
+}

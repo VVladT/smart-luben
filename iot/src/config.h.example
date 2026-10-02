@@ -1,0 +1,33 @@
+// Configuración del nodo ESP32 SmartLuben (PLANTILLA).
+// Copiar a config.h y completar con los datos reales.
+// config.h está ignorado en git: nunca commitear secretos.
+
+#pragma once
+
+// WiFi (en Wokwi usar "Wokwi-GUEST" sin contraseña)
+#define WIFI_SSID "Wokwi-GUEST"
+#define WIFI_PASS ""
+
+// Base de la API (SIN barra final).
+// Simulación (gateway wokwigw en ws://localhost:9011): host.wokwi.internal.
+// Ver iot/wokwi.toml [net] gateway.
+#define API_BASE_URL "http://host.wokwi.internal:8000"
+// Prod: https ngrok (descomentar para salir a internet)
+// #define API_BASE_URL "https://gonadotropic-nonvegetatively-glenna.ngrok-free.dev"
+
+// Mapeo sensor -> espacio de la API (S1=E01, S2=E02, S3=E03, S4=E04)
+#define SENSOR_ESPACIO_IDS {1, 2, 3, 4}
+
+// Histéresis del FSR (gramos estimados, escala 0-2000g del sketch)
+#define UMBRAL_OCUPADO_G 150.0f
+#define UMBRAL_LIBRE_G 50.0f
+
+// Lecturas consecutivas para confirmar un cambio (anti-rebote)
+#define DEBOUNCE_LECTURAS 5
+
+// Tiempos (ms)
+#define INTERVALO_MUESTREO 250
+#define INTERVALO_REINTENTO_WIFI 10000
+#define INTERVALO_REINTENTO_ENVIO 5000
+#define TIMEOUT_HTTP_MS 8000
+#define REINTENTOS_HTTP 3

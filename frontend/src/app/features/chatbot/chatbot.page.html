@@ -1,3 +1,4 @@
+<sl-navbar />
 <div class="max-w-5xl mx-auto p-6">
 
   <div class="mb-6">
@@ -30,10 +31,11 @@
 
 
     <div
+      #scrollContainer
       class="h-[500px] overflow-y-auto p-6 bg-gray-50"
     >
 
-      @for (message of messages; track $index) {
+      @for (message of messages(); track $index) {
 
         <div
           class="mb-4 flex"
@@ -50,6 +52,11 @@
             [class.shadow]="message.sender === 'bot'"
           >
             {{ message.text }}
+            @if (message.sender === 'bot' && message.sugerencias?.recommendations?.length) {
+              <sl-sugerencia-disposicion
+                [recommendations]="message.sugerencias!.recommendations"
+              />
+            }
           </div>
 
         </div>
@@ -57,7 +64,7 @@
       }
 
 
-      @if (loading) {
+      @if (loading()) {
 
         <div class="flex justify-start">
 
@@ -100,7 +107,7 @@
       <button
         type="button"
         (click)="sendMessage()"
-        [disabled]="loading || !message.trim()"
+        [disabled]="loading() || !message.trim()"
         class="
           bg-indigo-600
           hover:bg-indigo-700

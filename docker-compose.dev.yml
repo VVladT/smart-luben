@@ -28,8 +28,13 @@ services:
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      S3_ENDPOINT: http://garage:3900
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:3900}
     volumes:
       - ./backend:/app  # hot reload
+      - ./ar/assets:/ar-assets:ro  # GLBs para scripts/upload_default_models.py
     expose:
       - "8000"
     ports:
@@ -55,5 +60,52 @@ services:
       - backend
     command: npm start -- --host 0.0.0.0 --poll 2000
 
+  garage:
+    image: dxflrs/garage:v2.4.1
+    container_name: smart-luben-garage-dev
+    command: /garage server --single-node --default-bucket
+    environment:
+      GARAGE_DEFAULT_ACCESS_KEY: ${S3_ACCESS_KEY}
+      GARAGE_DEFAULT_SECRET_KEY: ${S3_SECRET_KEY}
+      GARAGE_DEFAULT_BUCKET: smart-luben
+    volumes:
+      - garage_meta_dev:/var/lib/garage/meta
+      - garage_data_dev:/var/lib/garage/data
+      - ./docker/garage.toml:/etc/garage.toml:ro
+    ports:
+      - "3900:3900"
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  ar:
+    build:
+      context: ./ar
+      dockerfile: Dockerfile
+    container_name: smart-luben-ar-dev
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+  # Punto único como en prod: :80 -> frontend /api /ar /s3
+  # (los puertos sueltos siguen disponibles en paralelo)
+  gateway:
+    image: nginx:alpine
+    container_name: smart-luben-gateway-dev
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/dev-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - ar
+
 volumes:
   postgres_data_dev:
+  garage_meta_dev:
+  garage_data_dev:

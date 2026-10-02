@@ -1,8 +1,23 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
 from app.config import settings
-from app.routers import productos, espacios, movimientos, dashboard, chatbot, ml_suggestions
+from app.routers import productos, espacios, movimientos, dashboard, chatbot, ml_suggestions, uploads, sync
+from app.routers.uploads import storage_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        from app.services.storage import ensure_buckets
+
+        ensure_buckets()
+        print("S3 buckets listos")
+    except Exception as e:
+        # Sin S3 (tests/CI/dev sin garage) la API sigue viva; presign lo reintenta
+        print(f"S3 no disponible al arrancar: {e}")
+    yield
 
 
 app = FastAPI(
@@ -12,6 +27,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -28,6 +44,9 @@ app.include_router(movimientos.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(chatbot.router, prefix="/api")
 app.include_router(ml_suggestions.router, prefix="/api")
+app.include_router(uploads.router, prefix="/api")
+app.include_router(storage_router, prefix="/api")
+app.include_router(sync.router, prefix="/api")
 
 
 @app.get("/", tags=["root"])

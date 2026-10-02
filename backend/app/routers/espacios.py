@@ -9,6 +9,7 @@ from app.schemas import (
     EspacioUpdate,
     EspacioResponse,
     EspacioConProductoResponse,
+    PlanificarRequest,
     ReponerRequest,
     MovimientoResponse,
     MovimientoDetalleResponse,
@@ -88,6 +89,39 @@ async def eliminar_espacio(espacio_id: int, db: AsyncSession = Depends(get_db)):
         if not espacio:
             raise HTTPException(status_code=404, detail="Espacio no encontrado")
         return espacio
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post(
+    "/{espacio_id}/planificar",
+    response_model=EspacioConProductoResponse,
+    summary="Planificar producto en espacio",
+    description="Asigna un producto a un espacio libre sin ocuparlo (queda pendiente de reposición). No registra movimiento."
+)
+async def planificar_espacio(
+    espacio_id: int,
+    request: PlanificarRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        return await EspacioService.planificar(db, espacio_id, request.producto_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete(
+    "/{espacio_id}/plan",
+    response_model=EspacioConProductoResponse,
+    summary="Cancelar plan de espacio",
+    description="Quita el producto planificado (vuelve a libre). Sin movimiento."
+)
+async def cancelar_plan_espacio(
+    espacio_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        return await EspacioService.cancelar_plan(db, espacio_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

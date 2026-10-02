@@ -142,6 +142,39 @@ jobs:
             exit 1
           fi
 
+      - name: Restore garage.toml
+        run: |
+          if [ -f ../garage.toml ]; then
+            cp ../garage.toml docker/garage.toml
+          fi
+          if [ ! -f docker/garage.toml ]; then
+            echo "::error::Falta docker/garage.toml: ni ../garage.toml ni ./docker/garage.toml existen. Créalo desde docker/garage.toml.example (vive junto al .env, fuera de git)."
+            exit 1
+          fi
+
+      - name: Validate required files and secrets
+        run: |
+          if [ ! -f docker/garage.toml ]; then
+            echo "::error::Falta docker/garage.toml (ver docker/garage.toml.example). Sin él Garage no arranca."
+            exit 1
+          fi
+          set -a
+          # shellcheck disable=SC1091
+          . ./.env
+          set +a
+          faltan=0
+          for var in POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL S3_ACCESS_KEY S3_SECRET_KEY S3_ENDPOINT S3_PUBLIC_ENDPOINT; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::Falta $var en .env"
+              faltan=1
+            fi
+          done
+          if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+            echo "::warning::Sin DEEPSEEK_API_KEY el chatbot responde degradado."
+          fi
+          # shellcheck disable=SC2086
+          [ $faltan -eq 0 ] || exit 1
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -149,14 +182,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull latest image
-        run: docker compose pull backend
+      - name: Pull latest images
+        run: docker compose pull db backend garage
+
+      - name: Start data services
+        run: docker compose up -d --wait db garage
 
       - name: Run database migrations
         run: docker compose run --rm backend alembic upgrade head
 
       - name: Run database seed (idempotente, 4 espacios)
         run: docker compose run --rm backend python scripts/seed.py
+
+      - name: Check product models (warn-only)
+        run: |
+          docker compose run --rm backend python -c "
+          import asyncio
+          from sqlalchemy import select, func
+          from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+          from sqlalchemy.orm import sessionmaker
+          from app.config import settings
+          from app.models import Producto
+
+          async def main():
+              engine = create_async_engine(settings.database_url, echo=False)
+              S = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+              async with S() as db:
+                  n = (await db.execute(select(func.count(Producto.id)).where(Producto.activo == True))).scalar()
+                  sin = (await db.execute(select(func.count(Producto.id)).where(Producto.activo == True, Producto.modelo_url.is_(None)))).scalar()
+                  print(f'::notice::Productos activos: {n}, sin modelo 3D: {sin} (upload_default_models.py si falta alguno)')
+              await engine.dispose()
+
+          asyncio.run(main())
+          "
 
       - name: Generate synthetic movements
         env:

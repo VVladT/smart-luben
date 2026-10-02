@@ -19,6 +19,16 @@ from app.schemas import (
 
 class ProductoService:
     @staticmethod
+    def _bump_version(version: Optional[str]) -> str:
+        """Bumpea patch de vX.Y.Z (fallback v1.0.0)."""
+        try:
+            v = (version or "v1.0.0").lstrip("v")
+            mayor, menor, patch = (int(x) for x in v.split("."))
+            return f"v{mayor}.{menor}.{patch + 1}"
+        except (ValueError, AttributeError):
+            return "v1.0.0"
+
+    @staticmethod
     async def get_all(db: AsyncSession, activo: Optional[bool] = None) -> List[Producto]:
         query = select(Producto)
         if activo is not None:
@@ -56,12 +66,22 @@ class ProductoService:
             return None
         
         update_data = producto_data.model_dump(exclude_unset=True)
-        
+
         if "nombre" in update_data:
             existing = await ProductoService.get_by_nombre(db, update_data["nombre"])
             if existing and existing.id != producto_id:
                 raise ValueError("Ya existe un producto con este nombre")
-        
+
+        # version es de solo lectura: bumpea sola al cambiar el modelo 3D
+        # o sus transforms (lo que el AR renderiza).
+        update_data.pop("version", None)
+        if any(
+            update_data.get(k) != getattr(producto, k)
+            for k in ("modelo_url", "scale", "rotation_x", "rotation_y", "rotation_z")
+            if k in update_data
+        ):
+            update_data["version"] = ProductoService._bump_version(producto.version)
+
         for key, value in update_data.items():
             setattr(producto, key, value)
         
@@ -132,6 +152,46 @@ class EspacioService:
         return espacio
 
     @staticmethod
+    async def planificar(db: AsyncSession, espacio_id: int, producto_id: int) -> Espacio:
+        """Asigna un producto a un espacio libre SIN ocuparlo (situación: pendiente).
+        No registra movimiento: nada se movió físicamente. La ocupación explícita
+        (futura integración IoT) se hace con reponer()."""
+        espacio = await EspacioService.get_by_id(db, espacio_id)
+        if not espacio:
+            raise ValueError("Espacio no encontrado")
+
+        if espacio.estado != EstadoEspacio.libre:
+            raise ValueError("Solo se puede planificar un espacio libre")
+
+        producto = await ProductoService.get_by_id(db, producto_id)
+        if not producto:
+            raise ValueError("Producto no encontrado")
+
+        if not producto.activo:
+            raise ValueError("El producto no está activo")
+
+        espacio.producto_actual_id = producto_id
+        await db.commit()
+        await db.refresh(espacio)
+        return espacio
+
+    @staticmethod
+    async def cancelar_plan(db: AsyncSession, espacio_id: int) -> Espacio:
+        """Quita el producto planificado (pendiente → libre).
+        Sin movimiento: nada se movió físicamente."""
+        espacio = await EspacioService.get_by_id(db, espacio_id)
+        if not espacio:
+            raise ValueError("Espacio no encontrado")
+
+        if espacio.estado != EstadoEspacio.libre:
+            raise ValueError("Solo se puede cancelar el plan de un espacio libre")
+
+        espacio.producto_actual_id = None
+        await db.commit()
+        await db.refresh(espacio)
+        return espacio
+
+    @staticmethod
     async def delete(db: AsyncSession, espacio_id: int) -> Optional[Espacio]:
         espacio = await EspacioService.get_by_id(db, espacio_id)
         if not espacio:
@@ -196,26 +256,24 @@ class MovimientoService:
 
     @staticmethod
     async def reponer(db: AsyncSession, espacio_id: int, request: ReponerRequest) -> Movimiento:
+        """Ocupa un espacio libre SIN recibir producto: usa el planificado
+        (pendiente) o NULL si no hay plan (desconocido). El producto del
+        request se ignora (compatibilidad). Toda ocupación con producto
+        conocido pasó sí o sí por planificar()."""
         espacio = await EspacioService.get_by_id(db, espacio_id)
         if not espacio:
             raise ValueError("Espacio no encontrado")
-        
+
         if espacio.estado == EstadoEspacio.ocupado:
             raise ValueError("El espacio ya está ocupado")
-        
-        producto = await ProductoService.get_by_id(db, request.producto_id)
-        if not producto:
-            raise ValueError("Producto no encontrado")
-        
-        if not producto.activo:
-            raise ValueError("El producto no está activo")
-        
+
+        producto_id = espacio.producto_actual_id
+
         espacio.estado = EstadoEspacio.ocupado
-        espacio.producto_actual_id = request.producto_id
-        
+
         movimiento = Movimiento(
             espacio_id=espacio_id,
-            producto_id=request.producto_id,
+            producto_id=producto_id,
             tipo=TipoMovimiento.reposicion
         )
         db.add(movimiento)

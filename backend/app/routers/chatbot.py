@@ -16,5 +16,4 @@ router = APIRouter(prefix="/chatbot", tags=["Chatbot"])
     description="Envía un mensaje al chatbot y recibe una respuesta basada en los datos de SmartLuben.",
 )
 async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
-    response = await process_message(request.message, db)
-    return ChatResponse(response=response)
+    return await process_message(request.message, db)

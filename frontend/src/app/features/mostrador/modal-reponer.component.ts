@@ -14,8 +14,9 @@ import { LoadingSpinnerComponent } from '../../shared/loading-spinner.component'
           <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" (click)="close.emit()"></div>
           <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full transform transition-all">
             <div class="px-6 py-4 border-b border-gray-200">
-              <h2 id="modal-title" class="text-lg font-semibold text-gray-900">Reponer Espacio</h2>
+              <h2 id="modal-title" class="text-lg font-semibold text-gray-900">Planificar reposición</h2>
               <p class="text-sm text-gray-500 mt-1">Espacio: <span class="font-mono">{{ espacio()?.codigo }}</span></p>
+              <p class="text-xs text-gray-400 mt-1">El espacio quedará pendiente; la ocupación se confirma después.</p>
             </div>
             <div class="px-6 py-4 max-h-96 overflow-y-auto">
               @if (loading()) {

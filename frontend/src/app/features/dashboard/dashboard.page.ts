@@ -5,11 +5,12 @@ import { DashboardService } from '../../core/services/dashboard.service';
 import { DashboardResumen } from '../../core/api/generated/types';
 import { ErrorMessageComponent } from '../../shared/error-message.component';
 import { NavbarComponent } from '../../shared/navbar.component';
+import { MostradorGridComponent } from '../mostrador/mostrador-grid.component';
 
 @Component({
   selector: 'sl-dashboard-page',
   standalone: true,
-  imports: [CommonModule, ErrorMessageComponent, NavbarComponent],
+  imports: [CommonModule, ErrorMessageComponent, NavbarComponent, MostradorGridComponent],
   template: `
     <div class="min-h-screen bg-gray-50">
       <sl-navbar />
@@ -91,27 +92,21 @@ import { NavbarComponent } from '../../shared/navbar.component';
             </div>
           </div>
 
+          <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900">Mostrador</h2>
+                <p class="text-sm text-gray-500">Estado actual y reposiciones</p>
+              </div>
+            </div>
+            <sl-mostrador-grid />
+          </div>
+
           <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-lg font-semibold text-gray-900">Accesos rápidos</h2>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <a
-                routerLink="/mostrador"
-                class="block p-6 bg-gray-50 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
-              >
-                <div class="flex items-center space-x-4">
-                  <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
-                    <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 class="font-medium text-gray-900">Ver Mostrador</h3>
-                    <p class="text-sm text-gray-500">Gestionar espacios y reposiciones</p>
-                  </div>
-                </div>
-              </a>
               <a
                 routerLink="/productos"
                 class="block p-6 bg-gray-50 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"

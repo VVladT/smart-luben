@@ -160,8 +160,12 @@ interface PaginatedMovimientosResponse {
                       <span class="font-mono">{{ movimiento.espacio_codigo }}</span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {{ movimiento.producto_nombre }}
-                      <span class="text-gray-500 ml-1">({{ movimiento.producto_categoria }})</span>
+                      @if (movimiento.producto_nombre) {
+                        {{ movimiento.producto_nombre }}
+                        <span class="text-gray-500 ml-1">({{ movimiento.producto_categoria }})</span>
+                      } @else {
+                        <span class="italic text-gray-400">Producto desconocido</span>
+                      }
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                       <span

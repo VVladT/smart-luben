@@ -1,4 +1,4 @@
-.PHONY: install db migrate seed seed-movements validate-movements clean-movements materialize-features train-demand train-ranker backend frontend api-types ml-pipeline
+.PHONY: install db migrate seed seed-movements validate-movements clean-movements materialize-features train-demand train-ranker upload-default-models backend frontend api-types ml-pipeline
 
 install:
 	cd backend && python -m venv venv
@@ -16,6 +16,9 @@ seed:
 
 seed-movements:
 	cd backend && ./venv/bin/python scripts/generate_synthetic_movements.py --force
+
+upload-default-models:
+	cd backend && ./venv/bin/python scripts/upload_default_models.py
 
 validate-movements:
 	cd backend && ./venv/bin/python scripts/generate_synthetic_movements.py --validate-only

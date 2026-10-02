@@ -108,6 +108,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/espacios/{espacio_id}/planificar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Planificar producto en espacio
+         * @description Asigna un producto a un espacio libre sin ocuparlo (queda pendiente de reposición). No registra movimiento.
+         */
+        post: operations["planificar_espacio_api_espacios__espacio_id__planificar_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/espacios/{espacio_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancelar plan de espacio
+         * @description Quita el producto planificado (vuelve a libre). Sin movimiento.
+         */
+        delete: operations["cancelar_plan_espacio_api_espacios__espacio_id__plan_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/espacios/{espacio_id}/reponer": {
         parameters: {
             query?: never;
@@ -208,6 +248,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chatbot/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Consultar al asistente LubenBot
+         * @description Envía un mensaje al chatbot y recibe una respuesta basada en los datos de SmartLuben.
+         */
+        post: operations["chat_api_chatbot_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ml/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Replenishment
+         * @description Genera recomendaciones de reposición y disposición para una fecha/hora específica.
+         *
+         *     Pipeline:
+         *     1. Obtener espacios libres y productos activos
+         *     2. Extraer features ML para (espacios_libres × productos × target_dow/hour)
+         *     3. DemandPredictor → demand_score por producto
+         *     4. SpaceProductRanker → ranker_score por (espacio, producto)
+         *     5. GreedyDispositionOptimizer → asignación final con límite 50%
+         *     7. Construir respuesta con recomendaciones, disposición y razones
+         */
+        post: operations["suggest_replenishment_api_ml_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ml/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ml Health
+         * @description Health check del servicio ML
+         */
+        get: operations["ml_health_api_ml_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/presign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * URL presignada de subida
+         * @description Valida el archivo y devuelve URL de subida directa a MinIO + URL pública final.
+         */
+        post: operations["presign_upload_api_uploads_presign_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/storage/{bucket}/{object_path}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Leer objeto
+         * @description Redirige (307) a URL presignada de 10 min. Buckets permitidos: smart-luben.
+         */
+        get: operations["leer_objeto_api_storage__bucket___object_path__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sync/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cambios desde versiones
+         * @description Compara versiones de productos del cliente AR y devuelve los que cambiaron + asignaciones actuales.
+         */
+        post: operations["sync_changes_api_sync_changes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -246,6 +414,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ChatRequest */
+        ChatRequest: {
+            /** Message */
+            message: string;
+        };
+        /** ChatResponse */
+        ChatResponse: {
+            /** Response */
+            response: string;
+            sugerencias?: components["schemas"]["SugerenciasDisposicion"] | null;
+        };
         /** DashboardResumen */
         DashboardResumen: {
             /** Total Espacios */
@@ -274,6 +453,14 @@ export interface components {
              */
             creado_en: string;
             producto_actual?: components["schemas"]["ProductoSimpleResponse"] | null;
+            /**
+             * Situacion
+             * @description Estado visual calculado (response-only, no se persiste):
+             *     libre+producto = pendiente de reposición,
+             *     ocupado sin producto = desconocido.
+             * @enum {string}
+             */
+            readonly situacion: "libre" | "pendiente" | "ocupado" | "desconocido";
         };
         /** EspacioCreate */
         EspacioCreate: {
@@ -298,6 +485,14 @@ export interface components {
              * Format: date-time
              */
             creado_en: string;
+            /**
+             * Situacion
+             * @description Estado visual calculado (response-only, no se persiste):
+             *     libre+producto = pendiente de reposición,
+             *     ocupado sin producto = desconocido.
+             * @enum {string}
+             */
+            readonly situacion: "libre" | "pendiente" | "ocupado" | "desconocido";
         };
         /** EspacioUpdate */
         EspacioUpdate: {
@@ -316,12 +511,42 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** MLSuggestionRequest */
+        MLSuggestionRequest: {
+            /**
+             * Target Datetime
+             * Format: date-time
+             */
+            target_datetime: string;
+            /**
+             * Top K
+             * @default 5
+             */
+            top_k: number;
+        };
+        /** MLSuggestionResponse */
+        MLSuggestionResponse: {
+            /** Recommendations */
+            recommendations: components["schemas"]["SpaceProductRecommendation"][];
+            /** Disposition */
+            disposition: {
+                [key: string]: string;
+            };
+            /**
+             * Occupied
+             * @default {}
+             */
+            occupied: {
+                [key: string]: string;
+            };
+            metadata: components["schemas"]["SuggestionMetadata"];
+        };
         /** MovimientoDetalleResponse */
         MovimientoDetalleResponse: {
             /** Espacio Id */
             espacio_id: number;
             /** Producto Id */
-            producto_id: number;
+            producto_id?: number | null;
             tipo: components["schemas"]["TipoMovimiento"];
             /** Id */
             id: number;
@@ -337,6 +562,33 @@ export interface components {
             /** Producto Categoria */
             producto_categoria: string;
         };
+        /** PlanificarRequest */
+        PlanificarRequest: {
+            /** Producto Id */
+            producto_id: number;
+        };
+        /** PresignRequest */
+        PresignRequest: {
+            /** Tipo */
+            tipo: string;
+            /** Filename */
+            filename: string;
+            /** Content Type */
+            content_type: string;
+            /** Size */
+            size?: number | null;
+        };
+        /** PresignResponse */
+        PresignResponse: {
+            /** Upload Url */
+            upload_url: string;
+            /** Public Url */
+            public_url: string;
+            /** Bucket */
+            bucket: string;
+            /** Object Path */
+            object_path: string;
+        };
         /** ProductoCreate */
         ProductoCreate: {
             /** Nombre */
@@ -345,6 +597,28 @@ export interface components {
             categoria: string;
             /** Imagen Url */
             imagen_url?: string | null;
+            /** Modelo Url */
+            modelo_url?: string | null;
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number;
+            /**
+             * Rotation X
+             * @default 0
+             */
+            rotation_x: number;
+            /**
+             * Rotation Y
+             * @default 0
+             */
+            rotation_y: number;
+            /**
+             * Rotation Z
+             * @default 0
+             */
+            rotation_z: number;
         };
         /** ProductoListResponse */
         ProductoListResponse: {
@@ -363,6 +637,33 @@ export interface components {
              * Format: date-time
              */
             creado_en: string;
+            /** Modelo Url */
+            modelo_url?: string | null;
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number;
+            /**
+             * Rotation X
+             * @default 0
+             */
+            rotation_x: number;
+            /**
+             * Rotation Y
+             * @default 0
+             */
+            rotation_y: number;
+            /**
+             * Rotation Z
+             * @default 0
+             */
+            rotation_z: number;
+            /**
+             * Version
+             * @default v1.0.0
+             */
+            version: string;
         };
         /** ProductoResponse */
         ProductoResponse: {
@@ -372,6 +673,28 @@ export interface components {
             categoria: string;
             /** Imagen Url */
             imagen_url?: string | null;
+            /** Modelo Url */
+            modelo_url?: string | null;
+            /**
+             * Scale
+             * @default 1
+             */
+            scale: number;
+            /**
+             * Rotation X
+             * @default 0
+             */
+            rotation_x: number;
+            /**
+             * Rotation Y
+             * @default 0
+             */
+            rotation_y: number;
+            /**
+             * Rotation Z
+             * @default 0
+             */
+            rotation_z: number;
             /** Id */
             id: number;
             /** Activo */
@@ -381,6 +704,11 @@ export interface components {
              * Format: date-time
              */
             creado_en: string;
+            /**
+             * Version
+             * @default v1.0.0
+             */
+            version: string;
         };
         /** ProductoSimpleResponse */
         ProductoSimpleResponse: {
@@ -401,13 +729,144 @@ export interface components {
             categoria?: string | null;
             /** Imagen Url */
             imagen_url?: string | null;
+            /** Modelo Url */
+            modelo_url?: string | null;
+            /** Scale */
+            scale?: number | null;
+            /** Rotation X */
+            rotation_x?: number | null;
+            /** Rotation Y */
+            rotation_y?: number | null;
+            /** Rotation Z */
+            rotation_z?: number | null;
             /** Activo */
             activo?: boolean | null;
         };
         /** ReponerRequest */
         ReponerRequest: {
             /** Producto Id */
+            producto_id?: number | null;
+        };
+        /** SpaceProductRecommendation */
+        SpaceProductRecommendation: {
+            /** Espacio Id */
+            espacio_id: number;
+            /** Espacio Codigo */
+            espacio_codigo: string;
+            /** Producto Id */
             producto_id: number;
+            /** Producto Nombre */
+            producto_nombre: string;
+            /** Score */
+            score: number;
+            /** Demand Score */
+            demand_score: number;
+            /** Ranker Score */
+            ranker_score: number;
+            /** Reason */
+            reason: string;
+        };
+        /** SugerenciaRecomendacion */
+        SugerenciaRecomendacion: {
+            /** Espacio Id */
+            espacio_id: number;
+            /** Espacio Codigo */
+            espacio_codigo: string;
+            /** Producto Id */
+            producto_id: number;
+            /** Producto Nombre */
+            producto_nombre: string;
+            /**
+             * Producto Categoria
+             * @default
+             */
+            producto_categoria: string;
+            /** Producto Imagen Url */
+            producto_imagen_url?: string | null;
+            /** Score */
+            score: number;
+            /**
+             * Demand Score
+             * @default 0
+             */
+            demand_score: number;
+            /**
+             * Ranker Score
+             * @default 0
+             */
+            ranker_score: number;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
+        /** SugerenciasDisposicion */
+        SugerenciasDisposicion: {
+            /**
+             * Recommendations
+             * @default []
+             */
+            recommendations: components["schemas"]["SugerenciaRecomendacion"][];
+            /**
+             * Disposition
+             * @default {}
+             */
+            disposition: {
+                [key: string]: string;
+            };
+        };
+        /** SuggestionMetadata */
+        SuggestionMetadata: {
+            /** Free Spaces Count */
+            free_spaces_count: number;
+            /** Productos Recommended */
+            productos_recommended: number;
+            /** Max Per Product */
+            max_per_product: number;
+            /** Model Version */
+            model_version: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+        };
+        /** SyncChange */
+        SyncChange: {
+            /** Type */
+            type: string;
+            /** Productoid */
+            productoId?: number | null;
+            /** Espacio Codigo */
+            espacio_codigo?: string | null;
+            /** Version */
+            version?: string | null;
+        };
+        /** SyncChangesRequest */
+        SyncChangesRequest: {
+            /**
+             * Versions
+             * @default {}
+             */
+            versions: {
+                [key: string]: string;
+            };
+            /**
+             * Assignments
+             * @default {}
+             */
+            assignments: {
+                [key: string]: number | null;
+            };
+        };
+        /** SyncChangesResponse */
+        SyncChangesResponse: {
+            /**
+             * Changes
+             * @default []
+             */
+            changes: components["schemas"]["SyncChange"][];
         };
         /**
          * TipoMovimiento
@@ -748,6 +1207,72 @@ export interface operations {
             };
         };
     };
+    planificar_espacio_api_espacios__espacio_id__planificar_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                espacio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanificarRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EspacioConProductoResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancelar_plan_espacio_api_espacios__espacio_id__plan_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                espacio_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EspacioConProductoResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reponer_espacio_api_espacios__espacio_id__reponer_post: {
         parameters: {
             query?: never;
@@ -905,6 +1430,188 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResumen"];
+                };
+            };
+        };
+    };
+    chat_api_chatbot_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    suggest_replenishment_api_ml_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MLSuggestionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MLSuggestionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ml_health_api_ml_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    presign_upload_api_uploads_presign_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresignRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresignResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    leer_objeto_api_storage__bucket___object_path__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bucket: string;
+                object_path: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            307: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    sync_changes_api_sync_changes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncChangesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncChangesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

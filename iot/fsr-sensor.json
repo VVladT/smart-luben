@@ -1,0 +1,22 @@
+{
+  "name": "fsr-sensor",
+  "author": "Víctor Tuñoque",
+  "pins": [
+    "P1",
+    "P2"
+  ],
+  "controls": [
+    {
+      "id": "force",
+      "label": "Fuerza Aplicada (g)",
+      "type": "range",
+      "min": 0,
+      "max": 100,
+      "value": 0
+    }
+  ],
+  "display": {
+    "width": 64,
+    "height": 144
+  }
+}

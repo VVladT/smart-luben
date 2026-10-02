@@ -53,6 +53,12 @@ jobs:
       - name: Run tests
         run: npm test -- --watch=false --no-progress
 
+      - name: Validate nginx configs
+        # nginx -t resuelve upstreams: hosts ficticios solo para el chequeo
+        run: |
+          docker run --rm --add-host backend:127.0.0.1 --add-host ar:127.0.0.1 --add-host garage:127.0.0.1 -v "$PWD/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t
+          docker run --rm --add-host frontend:127.0.0.1 --add-host backend:127.0.0.1 --add-host ar:127.0.0.1 --add-host garage:127.0.0.1 -v "$PWD/../docker/dev-gateway.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t
+
 
   build:
     name: Build Docker Image
@@ -115,6 +121,16 @@ jobs:
             cp ../.env .env
           elif [ ! -f .env ]; then
             echo "::error::Falta .env: ni ../.env ni ./.env existen. Créalo a partir de .env.example."
+            exit 1
+          fi
+
+      - name: Restore garage.toml
+        run: |
+          if [ -f ../garage.toml ]; then
+            cp ../garage.toml docker/garage.toml
+          fi
+          if [ ! -f docker/garage.toml ]; then
+            echo "::error::Falta docker/garage.toml: ni ../garage.toml ni ./docker/garage.toml existen."
             exit 1
           fi
 

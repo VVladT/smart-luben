@@ -1,0 +1,125 @@
+name: IoT CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "iot/src/**"
+      - "iot/platformio.ini"
+      - "iot/tests/**"
+      - "iot/setup_config.py"
+      - ".github/workflows/iot.yml"
+
+  push:
+    branches:
+      - main
+    paths:
+      - "iot/src/**"
+      - "iot/platformio.ini"
+      - "iot/tests/**"
+      - "iot/setup_config.py"
+      - ".github/workflows/iot.yml"
+
+jobs:
+
+  build:
+    name: Build Firmware
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: iot
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('iot/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Generate config (blackhole API)
+        # Sin .env usa defaults: API a blackhole -> la sim no escribe fuera
+        run: python setup_config.py
+
+      - name: Build firmware (esp32)
+        run: pio run -e esp32
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-esp32
+          path: |
+            iot/.pio/build/esp32/firmware.bin
+            iot/.pio/build/esp32/firmware.elf
+          if-no-files-found: error
+
+
+  sim:
+    name: Simulate (wokwi-cli)
+    runs-on: ubuntu-latest
+    needs: build
+
+    defaults:
+      run:
+        working-directory: iot
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('iot/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio
+
+      - name: Generate config (blackhole API)
+        run: python setup_config.py
+
+      - name: Build firmware (esp32)
+        run: pio run -e esp32
+
+      - name: Install wokwi-cli
+        run: curl -L https://wokwi.com/ci/install.sh | sh
+
+      - name: Run simulation scenario
+        env:
+          WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
+        run: |
+          wokwi-cli . \
+            --scenario tests/sensor-fsr.yaml \
+            --timeout 180000 \
+            --fail-text 'Guru Meditation' \
+            --serial-log-file sim.log
+
+      - name: Upload serial log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-log
+          path: iot/sim.log
+          if-no-files-found: warn

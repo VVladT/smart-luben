@@ -147,6 +147,23 @@ def _parse_with_dateparser(mensaje: str, ahora: datetime) -> Optional[datetime]:
     return None
 
 
+def solicita_disposicion(mensaje: str) -> bool:
+    """Detecta si el mensaje pide explícitamente una disposición/sugerencia
+    de reposición (solo entonces se adjuntan las sugerencias ML)."""
+    texto = mensaje.lower()
+    patrones = [
+        r"disposi",  # disposición, disponer
+        r"recom",  # recomendar, recomendación, recomiéndame
+        r"sugier|sugerencia",
+        r"rep[oó]n|reposi",  # reponer, repón, reposición
+        r"planifica",
+        r"qu[eé]\s+(pongo|coloco|ubico|deber[ií]a\s+\w+)",
+        r"arma\w*\s+(el\s+)?mostrador",
+        r"aplica",
+    ]
+    return any(re.search(p, texto) for p in patrones)
+
+
 def detectar_intencion_temporal(mensaje: str) -> Optional[datetime]:
     """
     Detecta si el mensaje pide sugerencias para un día/hora específico.
@@ -373,7 +390,9 @@ def detectar_intencion_temporal(mensaje: str) -> Optional[datetime]:
             encontrado = True
     
     if target_date is None:
-        target_date = (_get_now() + timedelta(days=dias_offset)).replace(hour=hora, minute=0, second=0, microsecond=0)
+        # Sin referencia temporal: hoy a la hora indicada (default 8am).
+        # No usar dias_offset aquí: puede ser None si ningún patrón matcheó.
+        target_date = _get_now().replace(hour=hora, minute=0, second=0, microsecond=0)
     
     return target_date
 def formatear_sugerencias_ml(sugerencias: Dict[str, Any], target_dt: Optional[datetime] = None) -> str:
@@ -469,11 +488,16 @@ def serializar_movimientos(movimientos) -> list:
     ]
 
 
-async def process_message(message: str, db: AsyncSession) -> str:
+async def process_message(message: str, db: AsyncSession) -> "ChatResponse":
+    from app.schemas.chat import ChatResponse
+
     if not settings.deepseek_api_key:
-        return (
-            "LubenBot no está configurado. "
-            "Agrega DEEPSEEK_API_KEY en .env para consultas inteligentes."
+        return ChatResponse(
+            response=(
+                "LubenBot no está configurado. "
+                "Agrega DEEPSEEK_API_KEY en .env para consultas inteligentes."
+            ),
+            sugerencias=None,
         )
 
     system_prompt = cargar_prompt()
@@ -482,10 +506,12 @@ async def process_message(message: str, db: AsyncSession) -> str:
     target_dt = detectar_intencion_temporal(message)
     es_consulta_temporal = target_dt is not None
     
-    # Obtener sugerencias ML si hay intención temporal
+    # Obtener sugerencias ML solo si pide disposición explícitamente
+    # (si no, todos los mensajes traerían la tarjeta sugerida).
     ml_context = ""
-    if target_dt:
-        ml_context = await obtener_sugerencias_ml_safe(target_dt, db)
+    ml_datos = None
+    if target_dt and solicita_disposicion(message):
+        ml_context, ml_datos = await obtener_sugerencias_ml_safe(target_dt, db)
 
     # Obtener datos necesarios según el tipo de consulta
     if es_consulta_temporal:
@@ -578,10 +604,13 @@ DATOS ACTUALES DEL SISTEMA SMARTLUBEN:
         respuesta = data["choices"][0]["message"]["content"]
         respuesta = respuesta.replace("**", "").replace("```", "")
 
-        return respuesta.strip()
+        return ChatResponse(response=respuesta.strip(), sugerencias=ml_datos)
 
-async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) -> str:
-    """Obtiene sugerencias ML directamente usando los servicios (sin HTTP)."""
+async def _get_ml_suggestions_internal(
+    target_dt: datetime, db: AsyncSession
+) -> "tuple[str, dict | None]":
+    """Obtiene sugerencias ML directamente usando los servicios (sin HTTP).
+    Retorna (texto_para_contexto, datos_estructurados_para_el_frontend)."""
     try:
         # Convertir a UTC para que coincida con cómo se almacenaron las features ML (en UTC).
         # Un naive se interpreta como hora pared de Lima (no UTC).
@@ -595,15 +624,17 @@ async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) ->
         productos = await ProductoService.get_all(db, activo=True)
         producto_ids = [p.id for p in productos]
         producto_map = {p.id: p.nombre for p in productos}
-        
+        producto_categoria = {p.id: p.categoria for p in productos}
+        producto_imagen = {p.id: p.imagen_url for p in productos}
+
         from app.services import EspacioService
         from app.models import EstadoEspacio
         espacios = await EspacioService.get_all(db)
         free_spaces = [e for e in espacios if e.estado == EstadoEspacio.libre]
         free_space_ids = [e.id for e in free_spaces]
-        
+
         if not free_spaces or not productos:
-            return ""
+            return "", None
         
         # 2. Obtener features para inferencia
         inference_feats = await MLFeatureService.get_features_for_inference(
@@ -654,6 +685,8 @@ async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) ->
                 "espacio_codigo": space.espacio_codigo,
                 "producto_id": producto_id,
                 "producto_nombre": producto_nombre,
+                "producto_categoria": producto_categoria.get(producto_id, ""),
+                "producto_imagen_url": producto_imagen.get(producto_id),
                 "score": combined_score,
                 "demand_score": demand_score,
                 "ranker_score": ranker_score,
@@ -683,18 +716,26 @@ async def _get_ml_suggestions_internal(target_dt: datetime, db: AsyncSession) ->
             "metadata": metadata
         }
         
-        return formatear_sugerencias_ml(sugerencias, target_dt)
-        
+        # Datos estructurados para el frontend (botón "Aplicar disposición")
+        datos = {
+            "recommendations": recommendations,
+            "disposition": disposition,
+        }
+
+        return formatear_sugerencias_ml(sugerencias, target_dt), datos
+
     except Exception as e:
         print(f"ERROR getting ML suggestions: {e}")
         import traceback
         traceback.print_exc()
-        return ""
+        return "", None
 
 
-async def obtener_sugerencias_ml_safe(target_dt: datetime, db: AsyncSession) -> str:
-    """Wrapper seguro que retorna string vacío si falla."""
+async def obtener_sugerencias_ml_safe(
+    target_dt: datetime, db: AsyncSession
+) -> "tuple[str, dict | None]":
+    """Wrapper seguro que retorna (texto, datos); tupla vacía si falla."""
     try:
         return await _get_ml_suggestions_internal(target_dt, db)
     except Exception:
-        return ""
+        return "", None

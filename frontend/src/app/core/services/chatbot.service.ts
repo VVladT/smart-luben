@@ -7,8 +7,27 @@ export interface ChatRequest {
   message: string;
 }
 
+export interface SugerenciaRecomendacion {
+  espacio_id: number;
+  espacio_codigo: string;
+  producto_id: number;
+  producto_nombre: string;
+  producto_categoria?: string;
+  producto_imagen_url?: string | null;
+  score: number;
+  demand_score?: number;
+  ranker_score?: number;
+  reason?: string;
+}
+
+export interface SugerenciasDisposicion {
+  recommendations: SugerenciaRecomendacion[];
+  disposition: Record<string, string>;
+}
+
 export interface ChatResponse {
   response: string;
+  sugerencias?: SugerenciasDisposicion | null;
 }
 
 @Injectable({ providedIn: 'root' })

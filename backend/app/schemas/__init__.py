@@ -19,6 +19,7 @@ from app.schemas.movimiento import (
     MovimientoResponse,
     MovimientoDetalleResponse,
     ReponerRequest,
+    PlanificarRequest,
     MovimientoFiltros,
 )
 from app.schemas.dashboard import DashboardResumen
@@ -40,6 +41,7 @@ __all__ = [
     "MovimientoResponse",
     "MovimientoDetalleResponse",
     "ReponerRequest",
+    "PlanificarRequest",
     "MovimientoFiltros",
     "DashboardResumen",
 ]

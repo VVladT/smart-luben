@@ -41,6 +41,14 @@ export class EspaciosService {
     return this.http.post<MovimientoDetalleResponse>(`${this.baseUrl}/${espacioId}/reponer`, request);
   }
 
+  planificarEspacio(espacioId: number, request: ReponerRequest): Observable<EspacioConProductoResponse> {
+    return this.http.post<EspacioConProductoResponse>(`${this.baseUrl}/${espacioId}/planificar`, request);
+  }
+
+  cancelarPlan(espacioId: number): Observable<EspacioConProductoResponse> {
+    return this.http.delete<EspacioConProductoResponse>(`${this.baseUrl}/${espacioId}/plan`);
+  }
+
   liberarEspacio(espacioId: number): Observable<MovimientoDetalleResponse> {
     return this.http.post<MovimientoDetalleResponse>(`${this.baseUrl}/${espacioId}/liberar`, {});
   }

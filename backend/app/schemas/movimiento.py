@@ -17,6 +17,8 @@ class MovimientoCreate(MovimientoBase):
 class MovimientoResponse(MovimientoBase):
     id: int
     fecha_hora: datetime
+    # Nullable en respuesta: salidas de espacios "desconocido" no tienen producto.
+    producto_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -30,6 +32,12 @@ class MovimientoDetalleResponse(MovimientoResponse):
 
 
 class ReponerRequest(BaseModel):
+    # Opcional e ignorado: la ocupación siempre usa el producto planificado
+    # (pendiente) o NULL (desconocido). Se mantiene por compatibilidad.
+    producto_id: Optional[int] = None
+
+
+class PlanificarRequest(BaseModel):
     producto_id: int
 
 

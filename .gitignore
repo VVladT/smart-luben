@@ -88,7 +88,29 @@ Thumbs.db
 # ============================================================
 
 docker-compose.override.yml
+# garage.toml real con secretos (ver docker/garage.toml.example)
+docker/garage.toml
 
+
+# ============================================================
+# IoT / PlatformIO
+# ============================================================
+
+iot/.pio/
+iot/.vscode/
+# config.h real con secretos (ver src/config.h.example)
+iot/src/config.h
+# env del nodo (ver iot/.env.example)
+iot/.env
+
+# ============================================================
+# AR standalone
+# ============================================================
+
+ar/node_modules/
+ar/dist/
+# Clave privada TLS de dev (rotar si llegó a commitearse)
+ar/key.pem
 
 # ============================================================
 # Misc

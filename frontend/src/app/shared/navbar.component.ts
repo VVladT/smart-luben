@@ -43,6 +43,13 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
             >
               Historial
             </a>
+            <a
+              routerLink="/chatbot"
+              routerLinkActive="bg-indigo-700"
+              class="px-3 py-2 rounded-md text-sm font-medium transition-colors"
+            >
+              LubenBot
+            </a>
           </div>
         </div>
       </div>

@@ -25,6 +25,13 @@ class Producto(Base):
     imagen_url = Column(String(500), nullable=True)
     activo = Column(Boolean, default=True, nullable=False)
     creado_en = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    # Assets 3D para el módulo AR (opcionales; version bumpea al cambiar modelo_url)
+    modelo_url = Column(String(500), nullable=True)
+    scale = Column(Float, default=1.0, nullable=False)
+    rotation_x = Column(Float, default=0.0, nullable=False)
+    rotation_y = Column(Float, default=0.0, nullable=False)
+    rotation_z = Column(Float, default=0.0, nullable=False)
+    version = Column(String(20), default="v1.0.0", nullable=False)
 
     movimientos = relationship("Movimiento", back_populates="producto")
 
@@ -48,7 +55,9 @@ class Movimiento(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     espacio_id = Column(Integer, ForeignKey("espacios.id"), nullable=False, index=True)
-    producto_id = Column(Integer, ForeignKey("productos.id"), nullable=False, index=True)
+    # Nullable: un espacio ocupado sin producto conocido (situación "desconocido")
+    # igual registra su movimiento de salida.
+    producto_id = Column(Integer, ForeignKey("productos.id"), nullable=True, index=True)
     tipo = Column(SQLEnum(TipoMovimiento), nullable=False)
     fecha_hora = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
