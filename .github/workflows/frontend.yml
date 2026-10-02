@@ -21,11 +21,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/smart-luben-frontend
 
-concurrency:
-  group: prod-deploy
-  cancel-in-progress: false
-
-
 jobs:
 
   test:
@@ -106,6 +101,10 @@ jobs:
     runs-on: self-hosted
 
     needs: build
+
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
 
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
