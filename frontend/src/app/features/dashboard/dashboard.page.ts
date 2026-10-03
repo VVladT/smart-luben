@@ -1,5 +1,6 @@
 import { Component, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { DashboardService } from '../../core/services/dashboard.service';
 import { DashboardResumen } from '../../core/api/generated/types';
@@ -10,7 +11,7 @@ import { MostradorGridComponent } from '../mostrador/mostrador-grid.component';
 @Component({
   selector: 'sl-dashboard-page',
   standalone: true,
-  imports: [CommonModule, ErrorMessageComponent, NavbarComponent, MostradorGridComponent],
+  imports: [CommonModule, RouterLink, ErrorMessageComponent, NavbarComponent, MostradorGridComponent],
   template: `
     <div class="min-h-screen bg-gray-50">
       <sl-navbar />
@@ -107,6 +108,22 @@ import { MostradorGridComponent } from '../mostrador/mostrador-grid.component';
               <h2 class="text-lg font-semibold text-gray-900">Accesos rápidos</h2>
             </div>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <a
+                routerLink="/experiencia-ar"
+                class="block p-6 bg-gray-50 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"
+              >
+                <div class="flex items-center space-x-4">
+                  <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="font-medium text-gray-900">Experiencia AR</h3>
+                    <p class="text-sm text-gray-500">Ver el mostrador en realidad aumentada</p>
+                  </div>
+                </div>
+              </a>
               <a
                 routerLink="/productos"
                 class="block p-6 bg-gray-50 border border-gray-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-colors"

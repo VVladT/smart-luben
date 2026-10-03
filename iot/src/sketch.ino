@@ -161,8 +161,12 @@ void setup() {
     pinMode(PINES_FSR[i], INPUT);
   }
   Serial.println("--- SmartLuben IoT v1.0 ---");
+#if !TLS_VERIFICAR
+  Serial.println("AVISO: TLS sin validación de cadena (solo dev/sim)");
+#endif
   conectarWifiBloqueante();
   if (WiFi.status() == WL_CONNECTED) {
+    diagnosticarRed();
     // Intento único rápido; si falla se reintenta en loop sin bloquear.
     sincronizado = sincronizarArranque();
   } else {

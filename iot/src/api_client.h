@@ -24,3 +24,7 @@ bool apiSincronizar();
 
 // GET /api/espacios/{id} -> estado ("libre"/"ocupado") en buf, o false.
 bool apiGetEstado(int espacioId, char *buf, size_t buflen);
+
+// Diagnóstico por etapas (DNS -> TCP:443 -> TLS -> HTTPS GET).
+// Solo lectura: no crea movimientos. Llamar una vez con WiFi arriba.
+void diagnosticarRed();

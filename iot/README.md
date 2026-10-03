@@ -2,7 +2,7 @@
 
 Un ESP32 lee 4 sensores de fuerza (RP-C10, pines 32–35) — uno por
 espacio del mostrador (S1→E01 … S4→E04) — y reporta ocupación /
-liberación a la API por HTTPS (ngrok).
+liberación a la API por HTTPS (túnel zrok reservado).
 
 ## Cableado (ver `diagram.json` en Wokwi)
 
@@ -21,7 +21,9 @@ pio run -e esp32       # compilar
 - Por defecto `API_BASE_URL` apunta a un blackhole: simulación y CI
   verifican **detección sin escribir jamás** en una API real.
 - Solo para E2E manual, apuntar al backend real en `.env`:
-  Wokwi `http://host.wokwi.internal:8000`, prod `https://tu-ngrok...`.
+  Wokwi `http://host.wokwi.internal:8000`, prod zrok reservado
+  `https://smartluben.shares.zrok.io` (estable; ngrok free es incompatible
+  con este handshake: su edge lo resetea).
 
 ## Lógica de detección
 
@@ -42,8 +44,8 @@ pio run -e esp32       # compilar
 | `400` "ya está ..." | — | Convergido: tratar como éxito y re-sincronizar |
 
 Headers: `Content-Type: application/json`,
-`ngrok-skip-browser-warning: true`. TLS validado con ISRG Root X1
-(embebido en `src/api_client.cpp`).
+`ngrok-skip-browser-warning: true` (requerido tras ngrok; inofensivo en zrok).
+TLS validado con ISRG Root X1 (embebido en `src/api_client.cpp`).
 
 ## Simulación / build
 
@@ -51,6 +53,16 @@ Headers: `Content-Type: application/json`,
 pio run -e esp32            # compilar
 pio device monitor           # ver Serial (115200)
 ```
+
+### TLS flexible vs estricto
+
+`TLS_VERIFICAR` (en `.env`, default 0):
+- **0 flexible**: cifrado sin validar la cadena. Necesario tras túneles
+  con cadenas modernas (ngrok YE2/X2) y suficiente para sim/dev.
+  El arranque lo avisa por Serial.
+- **1 estricto**: valida contra ISRG Root X1 embebido. Solo sirve con
+  cadena anclada en X1 (dominio propio con `--preferred-chain`).
+- Los timeouts están holgados (20s) porque el handshake simulado es lento.
 
 ### Tests automatizados con wokwi-cli
 
@@ -67,5 +79,5 @@ generado y `.env` para E2E manual).
 ## Pendiente post-MVP
 
 - Auth (API key) en escritura.
-- Dominio ngrok estático (el free cambia al reiniciar).
+- Túnel estable documentado (zrok reservado `smartluben.shares.zrok.io`).
 - Calibrar umbrales con productos reales.

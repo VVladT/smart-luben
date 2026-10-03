@@ -12,8 +12,8 @@
 // Simulación (gateway wokwigw en ws://localhost:9011): host.wokwi.internal.
 // Ver iot/wokwi.toml [net] gateway.
 #define API_BASE_URL "http://host.wokwi.internal:8000"
-// Prod: https ngrok (descomentar para salir a internet)
-// #define API_BASE_URL "https://gonadotropic-nonvegetatively-glenna.ngrok-free.dev"
+// Prod: https zrok (share reservado, estable).
+// #define API_BASE_URL "https://smartluben.shares.zrok.io"
 
 // Mapeo sensor -> espacio de la API (S1=E01, S2=E02, S3=E03, S4=E04)
 #define SENSOR_ESPACIO_IDS {1, 2, 3, 4}

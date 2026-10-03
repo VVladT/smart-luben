@@ -43,6 +43,10 @@ PLANTILLA = """// Configuración GENERADA por setup_config.py - NO EDITAR A MANO
 // Base de la API (SIN barra final).
 #define API_BASE_URL "{api_base_url}"
 
+// Validación TLS: 1 = estricta (bundle ISRG, para cadena X1 propia),
+// 0 = flexible (cifrado sin validar cadena; SOLO dev/sim contra ngrok).
+#define TLS_VERIFICAR {tls_verificar}
+
 // Mapeo sensor -> espacio de la API (S1=E01, S2=E02, S3=E03, S4=E04)
 #define SENSOR_ESPACIO_IDS {{1, 2, 3, 4}}
 
@@ -74,16 +78,22 @@ def main():
     conf.setdefault("WIFI_SSID", "Wokwi-GUEST")
     conf.setdefault("WIFI_PASS", "")
     conf.setdefault("API_BASE_URL", "http://127.0.0.1:9/")
+    try:
+        tls = int(str(conf.get("TLS_VERIFICAR", "0")).strip())
+    except ValueError:
+        tls = 0
+    conf["TLS_VERIFICAR"] = 1 if tls == 1 else 0
 
     contenido = PLANTILLA.format(
         wifi_ssid=escapar(conf["WIFI_SSID"]),
         wifi_pass=escapar(conf["WIFI_PASS"]),
         api_base_url=escapar(conf["API_BASE_URL"].rstrip("/")),
+        tls_verificar=conf["TLS_VERIFICAR"],
     )
     with open(OUT_FILE, "w", encoding="utf-8") as f:
         f.write(contenido)
     print(f"config.h generado desde {ENV_FILE if os.path.isfile(ENV_FILE) else 'defaults'}")
-    print(f"  WIFI_SSID={conf['WIFI_SSID']} API_BASE_URL={conf['API_BASE_URL']}")
+    print(f"  WIFI_SSID={conf['WIFI_SSID']} API_BASE_URL={conf['API_BASE_URL']} TLS_VERIFICAR={conf['TLS_VERIFICAR']}")
 
 
 if __name__ == "__main__":

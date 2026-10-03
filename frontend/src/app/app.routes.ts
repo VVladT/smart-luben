@@ -29,6 +29,12 @@ export const routes: Routes = [
         .then((m) => m.ChatbotPageComponent),
   },
   {
+    path: 'experiencia-ar',
+    loadComponent: () =>
+      import('./features/ar-acceso/ar-acceso.page')
+        .then((m) => m.ArAccessPageComponent),
+  },
+  {
     path: '**',
     redirectTo: '/dashboard',
   },
