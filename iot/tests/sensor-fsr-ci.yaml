@@ -1,0 +1,21 @@
+name: 'FSR S1 ocupar/liberar (CI rápido)'
+version: 1
+author: 'SmartLuben CI'
+
+# Escenario mínimo para CI: una transición completa en S1.
+# Lo completo (S1+S3) vive en sensor-fsr.yaml para corridas locales.
+# No requiere API (blackhole): solo se aserta detección por serial.
+steps:
+  - wait-serial: '--- SmartLuben IoT v1.0 ---'
+
+  - set-control:
+      part-id: fsr1
+      control: force
+      value: 20
+  - wait-serial: 'S1 OCUPADO'
+
+  - set-control:
+      part-id: fsr1
+      control: force
+      value: 0
+  - wait-serial: 'S1 LIBRE'

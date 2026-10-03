@@ -67,7 +67,10 @@ pio device monitor           # ver Serial (115200)
 ### Tests automatizados con wokwi-cli
 
 ```bash
+# Completo (local): S1+S3
 wokwi-cli . --scenario tests/sensor-fsr.yaml --timeout 180000
+# Mínimo (CI): solo S1
+wokwi-cli . --scenario tests/sensor-fsr-ci.yaml --timeout 90000
 ```
 
 El escenario mueve los sliders FSR (vía `set-control force`) y espera
@@ -75,6 +78,16 @@ los logs de detección (`S1 OCUPADO`...). Requiere `WOKWI_CLI_TOKEN`
 (en CI va como secret; el firmware de CI corre en CI con API blackhole).
 El `wokwi.toml` no lleva `[net]`: no hace falta gateway (ver `config.h`
 generado y `.env` para E2E manual).
+El CI corre la sim **solo en push a `main`** (los PR conservan el build);
+el escenario CI es mínimo para ahorrar segundos Wokwi.
+
+### Eficiencia de red (llamadas solo cuando aportan)
+
+- **Resync por eventos**, no por timer: al arrancar, tras un envío
+  fallido, al reconectar WiFi y cada 6h como red de seguridad.
+- **Backoff en reintentos**: 5s → ×2 hasta 60s ante ciclos todo-fallidos;
+  se resetea con cualquier éxito o al reconectar.
+- En estado sano el nodo **no llama a la API** salvo el safety de 6h.
 
 ## Pendiente post-MVP
 

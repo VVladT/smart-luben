@@ -73,6 +73,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
 
+    # Solo en push a main: la sim consume segundos Wokwi.
+    # Los PR conservan el build (gratis). Escenario mínimo S1 (rápido);
+    # el completo S1+S3 (sensor-fsr.yaml) es para corridas locales.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
     defaults:
       run:
         working-directory: iot
@@ -106,13 +111,13 @@ jobs:
       - name: Install wokwi-cli
         run: curl -L https://wokwi.com/ci/install.sh | sh
 
-      - name: Run simulation scenario
+      - name: Run simulation scenario (S1 only, fast)
         env:
           WOKWI_CLI_TOKEN: ${{ secrets.WOKWI_CLI_TOKEN }}
         run: |
           wokwi-cli . \
-            --scenario tests/sensor-fsr.yaml \
-            --timeout 180000 \
+            --scenario tests/sensor-fsr-ci.yaml \
+            --timeout 90000 \
             --fail-text 'Guru Meditation' \
             --serial-log-file sim.log
 

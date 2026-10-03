@@ -29,6 +29,14 @@ static unsigned long tWifi = 0;
 static unsigned long tReintento = 0;
 static unsigned long tResync = 0;
 static bool sincronizado = false;
+// Resync por eventos (no por timer fijo): se pide al arrancar, tras un
+// envío fallido, al reconectar WiFi, o cada 6h como red de seguridad.
+static bool resyncPendiente = true;
+// Backoff de envíos: base INTERVALO_REINTENTO_ENVIO, x2 ante ciclos todo-fallidos, tope 60s.
+static unsigned long retrasoEnvio = INTERVALO_REINTENTO_ENVIO;
+static const unsigned long RETRASO_ENVIO_MAX = 60000;
+static const unsigned long RESYNC_SEGURIDAD_MS = 6UL * 3600UL * 1000UL;
+static bool wifiEstabaConectado = false;
 
 static float leerGramos(int idx) {
   int lectura = analogRead(PINES_FSR[idx]);
@@ -55,7 +63,16 @@ static void conectarWifiBloqueante() {
 
 static void mantenerWifi() {
   unsigned long ahora = millis();
-  if (WiFi.status() == WL_CONNECTED) return;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!wifiEstabaConectado) {
+      // Reconexión: re-sincronizar creencia y reintentar envíos ya
+      wifiEstabaConectado = true;
+      resyncPendiente = true;
+      retrasoEnvio = INTERVALO_REINTENTO_ENVIO;
+    }
+    return;
+  }
+  wifiEstabaConectado = false;
   if (ahora - tWifi < (unsigned long)INTERVALO_REINTENTO_WIFI) return;
   tWifi = ahora;
   Serial.println("WiFi reconectando...");
@@ -146,12 +163,27 @@ static void muestrear() {
 static void procesarPendientes() {
   if (WiFi.status() != WL_CONNECTED) return;
   unsigned long ahora = millis();
-  if (ahora - tReintento < (unsigned long)INTERVALO_REINTENTO_ENVIO) return;
+  if (ahora - tReintento < retrasoEnvio) return;
   tReintento = ahora;
+  bool hayPendientes = false;
+  bool todoFallo = true;
   for (int i = 0; i < TOTAL_SENSORES; i++) {
-    if (eventoPendiente[i] && enviarEvento(i)) {
+    if (!eventoPendiente[i]) continue;
+    hayPendientes = true;
+    if (enviarEvento(i)) {
       eventoPendiente[i] = false;
+      todoFallo = false;
+    } else {
+      // Fallo de envío: la creencia puede estar desfasada -> resync
+      resyncPendiente = true;
     }
+  }
+  if (!hayPendientes) {
+    retrasoEnvio = INTERVALO_REINTENTO_ENVIO;
+  } else if (todoFallo) {
+    retrasoEnvio = min(retrasoEnvio * 2, RETRASO_ENVIO_MAX);
+  } else {
+    retrasoEnvio = INTERVALO_REINTENTO_ENVIO;
   }
 }
 
@@ -167,8 +199,9 @@ void setup() {
   conectarWifiBloqueante();
   if (WiFi.status() == WL_CONNECTED) {
     diagnosticarRed();
-    // Intento único rápido; si falla se reintenta en loop sin bloquear.
+    // Intento único rápido; si falla queda deuda (resyncPendiente) sin bloquear.
     sincronizado = sincronizarArranque();
+    resyncPendiente = !sincronizado;
   } else {
     Serial.println("Sin WiFi: se opera solo local hasta reconectar");
   }
@@ -178,12 +211,20 @@ void setup() {
 void loop() {
   mantenerWifi();
 
-  // Reintento de sync en segundo plano si el arranque falló
-  if (!sincronizado && WiFi.status() == WL_CONNECTED) {
+  // Resync por eventos (no por timer fijo): si hay deuda y pasó al menos
+  // 60s del último intento, más red de seguridad cada 6h.
+  if (WiFi.status() == WL_CONNECTED) {
     unsigned long ahora = millis();
-    if (ahora - tResync >= 30000UL) {
+    if (ahora - tResync >= RESYNC_SEGURIDAD_MS) {
       tResync = ahora;
-      sincronizado = sincronizarArranque();
+      resyncPendiente = true;
+    }
+    if (resyncPendiente && ahora - tResync >= 60000UL) {
+      tResync = ahora;
+      if (sincronizarArranque()) {
+        sincronizado = true;
+        resyncPendiente = false;
+      }
     }
   }
 
