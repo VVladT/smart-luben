@@ -15,6 +15,10 @@ export const routes: Routes = [
     loadComponent: () => import('./features/mostrador/mostrador.page').then((m) => m.MostradorPageComponent),
   },
   {
+    path: 'iot-demo',
+    loadComponent: () => import('./features/iot-demo/iot-demo-page/iot-demo-page').then((m) => m.IotDemoPage),
+  },
+  {
     path: 'productos',
     loadComponent: () => import('./features/productos/productos.page').then((m) => m.ProductosPageComponent),
   },

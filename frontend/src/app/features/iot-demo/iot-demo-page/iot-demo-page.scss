@@ -1,0 +1,18 @@
+.shelf-rail {
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 75%, #e2e8f0 100%);
+}
+
+.shelf-slot-stage {
+  background-color: #fafbfc;
+  background-image: linear-gradient(180deg, transparent 0%, transparent 79%, rgb(226 232 240 / 38%) 80%, transparent 81%);
+}
+
+.shelf-board {
+  background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+  box-shadow: 0 5px 8px -5px rgb(15 23 42 / 45%);
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  opacity: 1;
+}

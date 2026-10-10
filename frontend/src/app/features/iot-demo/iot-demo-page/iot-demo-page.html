@@ -1,0 +1,246 @@
+<div class="min-h-screen bg-[#f5f7fb] text-slate-900">
+  <sl-navbar />
+
+  <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <header class="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <div class="mb-2 inline-flex items-center gap-2 text-xs font-semibold text-emerald-800">
+          <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+          Conectado al mostrador real
+        </div>
+        <h1 class="text-3xl font-bold tracking-tight text-slate-950">Simulación del mostrador</h1>
+        <p class="mt-1 text-sm text-slate-600">Arrastra productos al estante o selecciónalos y elige un espacio.</p>
+      </div>
+      <button type="button" (click)="refresh()" [disabled]="loading()" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50">
+        Sincronizar estado
+      </button>
+    </header>
+
+    @if (pageError()) {
+      <div role="alert" class="mb-5 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        <span>{{ pageError() }}</span>
+        <button type="button" (click)="loadInitialState()" class="font-semibold underline">Reintentar</button>
+      </div>
+    }
+
+    @if (loading()) {
+      <div class="animate-pulse rounded-3xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Cargando mostrador y productos…</div>
+    } @else {
+      <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <aside aria-labelledby="products-heading" class="order-2 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+        <div class="mb-4">
+          <div>
+            <p class="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-600">Inventario</p>
+            <h2 id="products-heading" class="mt-1 text-lg font-bold text-slate-950">Productos</h2>
+          </div>
+          <p class="mt-1 text-xs leading-5 text-slate-500">Arrastra al mostrador o selecciona para elegir espacio. Pesos editables solo para la simulación.</p>
+        </div>
+
+        @if (productsWithWeight().length === 0) {
+          <p class="rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-500">No hay productos activos para colocar.</p>
+        } @else {
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-1">
+            @for (item of productsWithWeight(); track item.product.id) {
+              <article
+                draggable="true"
+                (dragstart)="startProductDrag(item.product.id, $event)"
+                (dragend)="draggingProductId.set(null)"
+                class="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-2 rounded-xl border p-2 transition"
+                [class.border-indigo-400]="selectedProductId() === item.product.id"
+                [class.bg-indigo-50]="selectedProductId() === item.product.id"
+                [class.border-slate-200]="selectedProductId() !== item.product.id"
+                [class.bg-white]="selectedProductId() !== item.product.id"
+              >
+                <div class="row-span-3 flex h-14 w-14 items-center justify-center rounded-lg bg-slate-50 p-1">
+                  @if (productImage(item.product)) {
+                    <img [src]="productImage(item.product)" [alt]="item.product.nombre" class="h-full w-full object-contain" loading="lazy" />
+                  } @else {
+                    <svg class="h-7 w-7 text-slate-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m4 7 8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4m8-4-8 4m0 0v10" stroke-width="1.5" stroke-linejoin="round" /></svg>
+                  }
+                </div>
+                <h3 class="truncate self-end text-xs font-semibold text-slate-800" [title]="item.product.nombre">{{ item.product.nombre }}</h3>
+                <p class="truncate text-[10px] text-slate-500">{{ item.product.categoria }}</p>
+                <label class="flex items-center gap-1 text-[10px] text-slate-600">
+                  <span>g</span>
+                  <input
+                    type="number"
+                    min="1"
+                    [max]="maxLoad"
+                    step="10"
+                    [value]="item.weight"
+                    (click)="$event.stopPropagation()"
+                    (input)="setProductWeight(item.product.id, $event)"
+                    [attr.aria-label]="'Peso simulado de ' + item.product.nombre + ' en gramos'"
+                    class="min-w-0 w-full rounded-md border border-slate-200 bg-white px-1.5 py-1 font-mono text-[11px] text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  />
+                </label>
+                <button type="button" (click)="selectProduct(item.product.id)" class="col-span-2 mt-1 w-full rounded-lg px-2 py-1.5 text-[11px] font-semibold transition focus:outline-none focus:ring-2 focus:ring-indigo-500" [class.bg-indigo-600]="selectedProductId() === item.product.id" [class.text-white]="selectedProductId() === item.product.id" [class.bg-slate-100]="selectedProductId() !== item.product.id" [class.text-slate-700]="selectedProductId() !== item.product.id">
+                  {{ selectedProductId() === item.product.id ? 'Seleccionado' : 'Elegir producto' }}
+                </button>
+              </article>
+            }
+          </div>
+        }
+      </aside>
+
+      <section aria-labelledby="shelf-heading" class="order-1 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:col-start-1 lg:row-start-1">
+        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p class="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-600">Vista física</p>
+            <h2 id="shelf-heading" class="mt-1 text-xl font-bold text-slate-950">Estante del mostrador</h2>
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <p class="text-xs text-slate-500">{{ occupiedThreshold }} g para ocupar · {{ freeThreshold }} g para liberar</p>
+            <button type="button" (click)="toggleCircuit()" [attr.aria-expanded]="showCircuit()" aria-controls="iot-circuit-view" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 6h6v5H4zM14 13h6v5h-6zM10 8.5h4a2 2 0 0 1 2 2V13M7 11v5a2 2 0 0 0 2 2h5" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" /></svg>
+              {{ showCircuit() ? 'Ocultar circuito' : 'Ver circuito' }}
+            </button>
+          </div>
+        </div>
+
+        @if (selectedProduct(); as selected) {
+          <div class="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-2.5 text-sm text-indigo-900">
+            Seleccionado: <strong>{{ selected.nombre }}</strong> · {{ productWeights()[selected.id] ?? 250 }} g. Haz clic en un espacio vacío.
+          </div>
+        }
+
+        @if (slots().length === 0) {
+          <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">La API no devolvió espacios configurados.</div>
+        } @else {
+          <div class="shelf-rail grid gap-4 rounded-2xl px-3 pb-6 pt-4 sm:grid-cols-2 2xl:grid-cols-4">
+            @for (slot of slots(); track slot.space.id) {
+              <article
+                (dragover)="allowProductDrop($event)"
+                (drop)="dropProduct(slot.space.id, $event)"
+                class="shelf-slot flex min-h-72 flex-col overflow-hidden rounded-2xl border bg-white transition"
+                [class.border-indigo-400]="draggingProductId() !== null && slotCanReceiveProduct(slot)"
+                [class.ring-2]="draggingProductId() !== null && slotCanReceiveProduct(slot)"
+                [class.ring-indigo-100]="draggingProductId() !== null && slotCanReceiveProduct(slot)"
+                [class.border-slate-200]="draggingProductId() === null || !slotCanReceiveProduct(slot)"
+              >
+                <div class="flex items-center justify-between border-b border-slate-100 px-3.5 py-3">
+                  <div>
+                    <h3 class="font-mono text-sm font-bold text-slate-900">{{ slot.space.codigo }}</h3>
+                    <p class="text-[11px] text-slate-500">{{ slot.space.ubicacion }}</p>
+                  </div>
+                  <span class="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+                    [class.bg-emerald-100]="slot.space.situacion === 'ocupado'"
+                    [class.text-emerald-800]="slot.space.situacion === 'ocupado'"
+                    [class.bg-rose-100]="slot.space.situacion === 'desconocido'"
+                    [class.text-rose-800]="slot.space.situacion === 'desconocido'"
+                    [class.bg-amber-100]="slot.space.situacion === 'pendiente'"
+                    [class.text-amber-800]="slot.space.situacion === 'pendiente'"
+                    [class.bg-slate-100]="slot.space.situacion === 'libre'"
+                    [class.text-slate-700]="slot.space.situacion === 'libre'"
+                  >{{ slotStatusLabel(slot) }}</span>
+                </div>
+
+                <div class="shelf-slot-stage relative flex flex-1 flex-col items-center justify-end px-3 pb-4 pt-3 text-center">
+                  @if (slot.physicalProduct) {
+                    @if (productImage(slot.physicalProduct)) {
+                      <img [src]="productImage(slot.physicalProduct)" [alt]="slot.physicalProduct.nombre" class="relative z-10 mb-2 h-32 max-w-full object-contain drop-shadow-md" loading="lazy" />
+                    } @else {
+                      <div class="relative z-10 mb-3 flex h-28 w-20 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
+                        <svg class="h-12 w-12" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="m4 7 8-4 8 4v10l-8 4-8-4V7Zm0 0 8 4m8-4-8 4m0 0v10" stroke-width="1.5" stroke-linejoin="round" /></svg>
+                      </div>
+                    }
+                    <p class="relative z-10 max-w-full truncate text-sm font-semibold text-slate-800">{{ slot.physicalProduct.nombre }}</p>
+                    @if (slot.space.situacion === 'desconocido') {
+                      <p class="relative z-10 mt-0.5 text-[10px] text-rose-700">La API no identifica este producto</p>
+                    } @else if (slot.space.producto_actual && slot.space.producto_actual.id !== slot.physicalProduct.id) {
+                      <p class="relative z-10 mt-0.5 text-[10px] text-amber-700">API registra: {{ slot.space.producto_actual.nombre }}</p>
+                    }
+                    <p class="relative z-10 mt-1 font-mono text-xs tabular-nums text-slate-500">{{ slot.loadGrams }} g</p>
+                  } @else if (slot.space.situacion === 'pendiente' && slot.space.producto_actual) {
+                    @if (productImage(slot.space.producto_actual)) {
+                      <img [src]="productImage(slot.space.producto_actual)" [alt]="slot.space.producto_actual.nombre" class="relative z-10 mb-2 h-28 max-w-full object-contain opacity-45 grayscale" loading="lazy" />
+                    }
+                    <p class="relative z-10 text-xs font-medium text-amber-800">{{ slot.space.producto_actual.nombre }} · planificado</p>
+                    <p class="relative z-10 mt-1 text-[10px] text-slate-500">Aún no está colocado físicamente</p>
+                  } @else {
+                    <div class="relative z-10 mb-3 flex h-24 w-20 items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/80 text-slate-300">
+                      <svg class="h-9 w-9" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M12 5v14m-7-7h14" stroke-width="1.5" stroke-linecap="round" /></svg>
+                    </div>
+                    <p class="relative z-10 text-xs text-slate-400">Espacio vacío</p>
+                  }
+                  <div class="shelf-board absolute inset-x-3 bottom-3 h-2 rounded-full"></div>
+                </div>
+
+                <div class="border-t border-slate-100 bg-slate-50/80 p-3">
+                  @if (slot.busy) {
+                    <p class="py-1.5 text-center text-xs font-semibold text-indigo-700">Actualizando mostrador…</p>
+                  } @else if (slot.retryAction) {
+                    <p class="mb-2 text-xs text-rose-700">{{ slot.error }}</p>
+                    <button type="button" (click)="retry(slot)" class="w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-700">Reintentar actualización</button>
+                  } @else if (slot.physicalProduct) {
+                    <button type="button" (click)="removePhysicalProduct(slot.space.id)" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-rose-300 hover:text-rose-700">Retirar del estante</button>
+                  } @else if (isOccupied(slot.space)) {
+                    <p class="py-2 text-center text-xs text-slate-500">Confirmando retiro por sensor…</p>
+                  } @else if (selectedProductId() && slotCanReceiveProduct(slot)) {
+                    <button type="button" (click)="placeSelectedProduct(slot.space.id)" class="w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700">Colocar producto</button>
+                  } @else if (slotCanReceiveProduct(slot)) {
+                    <p class="py-2 text-center text-xs text-slate-400">Arrastra aquí un producto</p>
+                  } @else {
+                    <p class="py-2 text-center text-xs text-slate-400">Espacio no disponible</p>
+                  }
+                </div>
+              </article>
+            }
+          </div>
+        }
+
+        @if (showCircuit()) {
+          <section id="iot-circuit-view" aria-labelledby="circuit-heading" class="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-4 sm:p-5">
+            <div class="mb-4 flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p class="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-300">Vista lógica sincronizada</p>
+                <h3 id="circuit-heading" class="mt-1 text-base font-semibold text-white">ESP32 · sensores FSR</h3>
+              </div>
+              <p class="text-[11px] text-slate-400">Representación visual, no emulación eléctrica</p>
+            </div>
+            <div class="overflow-x-auto rounded-xl bg-slate-900 p-2">
+              <svg viewBox="0 0 960 390" role="img" aria-labelledby="circuit-svg-title circuit-svg-desc" class="min-w-[760px] w-full">
+                <title id="circuit-svg-title">ESP32 conectado a cuatro sensores de fuerza</title>
+                <desc id="circuit-svg-desc">Las señales y lecturas muestran el peso simulado en cada espacio del mostrador.</desc>
+                <defs>
+                  <linearGradient id="boardGradient" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#1e293b"/><stop offset="1" stop-color="#334155"/></linearGradient>
+                </defs>
+
+                <rect x="24" y="30" width="252" height="330" rx="22" fill="url(#boardGradient)" stroke="#64748b" stroke-width="2" />
+                <rect x="83" y="92" width="128" height="118" rx="12" fill="#0f172a" stroke="#475569" />
+                <text x="147" y="143" text-anchor="middle" fill="#e2e8f0" font-size="17" font-weight="700">ESP32</text>
+                <text x="147" y="166" text-anchor="middle" fill="#94a3b8" font-size="11">DEVKIT V1</text>
+                <text x="147" y="236" text-anchor="middle" fill="#cbd5e1" font-size="11" font-weight="600">SMARTLUBEN · IOT</text>
+                <text x="147" y="258" text-anchor="middle" fill="#64748b" font-size="10">4 CANALES ANALÓGICOS</text>
+
+                @for (connection of circuitSensors(); track connection.slot.space.id) {
+                  @let centerY = 90 + connection.index * 76;
+                  <circle cx="276" [attr.cy]="centerY" r="5" [attr.fill]="circuitSignalActive(connection.slot) ? '#a5b4fc' : '#64748b'" />
+                  <text x="259" [attr.y]="centerY - 9" text-anchor="end" fill="#cbd5e1" font-size="10" font-family="monospace">GPIO{{ connection.pin }}</text>
+                  <path [attr.d]="'M281 ' + centerY + ' H480'" fill="none" [attr.stroke]="circuitSignalActive(connection.slot) ? '#818cf8' : '#475569'" stroke-width="2.5" [attr.stroke-dasharray]="circuitSignalActive(connection.slot) ? 'none' : '5 6'" />
+                  <circle cx="480" [attr.cy]="centerY" r="4" [attr.fill]="circuitSignalActive(connection.slot) ? '#a5b4fc' : '#64748b'" />
+
+                  <rect x="496" [attr.y]="centerY - 29" width="438" height="58" rx="12" fill="#1e293b" stroke="#475569" />
+                  <text x="513" [attr.y]="centerY - 6" fill="#f8fafc" font-size="12" font-weight="700">{{ connection.sensor }} · {{ connection.slot.space.codigo }}</text>
+                  <text x="513" [attr.y]="centerY + 11" fill="#94a3b8" font-size="10">{{ circuitSignalLabel(connection.slot) }}</text>
+
+                  <rect x="680" [attr.y]="centerY - 17" width="54" height="34" rx="7" fill="#312e81" stroke="#6366f1" />
+                  <text x="707" [attr.y]="centerY + 4" text-anchor="middle" fill="#e0e7ff" font-size="10" font-weight="700">FSR</text>
+                  <path [attr.d]="'M734 ' + centerY + ' H752 l5 -7 7 14 7 -14 7 14 6 -7 H799'" fill="none" stroke="#94a3b8" stroke-width="1.6" />
+                  <text x="817" [attr.y]="centerY - 3" fill="#cbd5e1" font-size="10">R 1 kΩ</text>
+                  <text x="817" [attr.y]="centerY + 12" fill="#64748b" font-size="9">a GND</text>
+
+                  <rect x="867" [attr.y]="centerY - 18" width="56" height="36" rx="8" [attr.fill]="circuitSignalActive(connection.slot) ? '#312e81' : '#0f172a'" [attr.stroke]="circuitSignalActive(connection.slot) ? '#818cf8' : '#475569'" />
+                  <text x="895" [attr.y]="centerY - 2" text-anchor="middle" fill="#a5b4fc" font-size="8">PESO</text>
+                  <text x="895" [attr.y]="centerY + 11" text-anchor="middle" fill="#f8fafc" font-size="10" font-family="monospace">{{ connection.slot.loadGrams }}g</text>
+                }
+              </svg>
+            </div>
+          </section>
+        }
+        <p class="mt-3 text-center text-[11px] text-slate-500">Los pesos son valores de simulación guardados solo en este navegador. La ocupación y liberación sí se envían a la API.</p>
+      </section>
+      </div>
+    }
+  </main>
+</div>
