@@ -1,0 +1,171 @@
+{
+  "name": "automatic-plan",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            },
+            {
+              "triggerAtHour": 12
+            },
+            {
+              "triggerAtHour": 16
+            }
+          ]
+        }
+      },
+      "id": "c7aa4090-eb68-449a-9f1d-92793bd1fe5a",
+      "name": "Horarios 08:00, 12:00 y 16:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        288,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smart-luben-espacio-liberado",
+        "options": {}
+      },
+      "id": "bba4eb14-545b-4b4d-b8a5-7bc281cccd0b",
+      "name": "Espacio liberado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        288,
+        624
+      ],
+      "webhookId": "9b51f0d7-a4c1-4f3f-98fb-88571e8f3baa"
+    },
+    {
+      "parameters": {
+        "jsCode": "const inicio = 8 * 60;  // 08:00 America/Lima\nconst fin = 22 * 60;    // 22:00 America/Lima\nconst partes = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());\nconst hora = Number(partes.find(p => p.type === 'hour').value);\nconst minuto = Number(partes.find(p => p.type === 'minute').value);\nconst dentroDeHorario = hora * 60 + minuto >= inicio && hora * 60 + minuto < fin;\nreturn dentroDeHorario ? $input.all().filter(item => item.json.body?.event === 'space_released') : [];"
+      },
+      "id": "a5dccbb2-d0f3-49ce-8f4f-8ee692d78c64",
+      "name": "Validar horario de operación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://backend:8000/api/espacios",
+        "options": {}
+      },
+      "id": "82398cdd-77c6-489f-955c-e8239a4b84af",
+      "name": "Consultar mostrador",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// HTTP Request entrega un item por espacio; no usar la 'situacion': pendiente cuenta como físicamente vacío.\nconst espacios = $input.all().flatMap(item => Array.isArray(item.json) ? item.json : [item.json]);\nreturn espacios.length > 0 && espacios.every(espacio => espacio.estado === 'libre') ? [{ json: { espacios_libres: espacios.length } }] : [];"
+      },
+      "id": "1bb133fc-356f-4d95-82d4-20efaedc4787",
+      "name": "Confirmar mostrador vacío",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/api/ml/plan-now",
+        "options": {}
+      },
+      "id": "bc979e5a-d085-4d54-9f4a-d9c296b709b7",
+      "name": "Planificar espacios libres",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1248,
+        384
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Horarios 08:00, 12:00 y 16:00": {
+      "main": [
+        [
+          {
+            "node": "Planificar espacios libres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espacio liberado": {
+      "main": [
+        [
+          {
+            "node": "Validar horario de operación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar horario de operación": {
+      "main": [
+        [
+          {
+            "node": "Consultar mostrador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar mostrador": {
+      "main": [
+        [
+          {
+            "node": "Confirmar mostrador vacío",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmar mostrador vacío": {
+      "main": [
+        [
+          {
+            "node": "Planificar espacios libres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "5f65f1c1-01dd-4d87-ac3d-324a3f24d9e1",
+  "meta": {
+    "instanceId": "c6b02c8ff441725efe39bbf29756c98f226b61f4f1a70f15b9fd353d003d80ea"
+  },
+  "nodeGroups": [],
+  "id": "25pZ9DqIHtB4KqOY",
+  "tags": []
+}

@@ -47,6 +47,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+      N8N_EMPTY_COUNTER_WEBHOOK_URL: ${N8N_EMPTY_COUNTER_WEBHOOK_URL:-}
 
     volumes:
       - backend_models:/app/models
@@ -83,6 +84,8 @@ services:
         condition: service_healthy
       ar:
         condition: service_started
+      n8n:
+        condition: service_started
 
 
   ar:
@@ -99,6 +102,29 @@ services:
       interval: 15s
       timeout: 5s
       retries: 5
+
+
+  n8n:
+    image: n8nio/n8n:2.45.7
+    container_name: smart-luben-n8n
+    restart: unless-stopped
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Configura N8N_ENCRYPTION_KEY en .env}
+      N8N_PATH: /n8n/
+      N8N_EDITOR_BASE_URL: ${N8N_PUBLIC_URL:?Configura N8N_PUBLIC_URL en .env}
+      N8N_WEBHOOK_URL: ${N8N_PUBLIC_URL:?Configura N8N_PUBLIC_URL en .env}
+      N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-1}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      GENERIC_TIMEZONE: America/Lima
+      TZ: America/Lima
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    expose:
+      - "5678"
+    depends_on:
+      backend:
+        condition: service_healthy
 
 
   garage:
@@ -133,3 +159,4 @@ volumes:
   backend_models:
   garage_meta:
   garage_data:
+  n8n_data:

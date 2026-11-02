@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,7 +15,7 @@ from app.services.disposition_optimizer import (
     GreedyDispositionOptimizer,
     build_space_info_from_db,
 )
-from app.models import EstadoEspacio
+from app.models import EstadoEspacio, Espacio
 
 
 router = APIRouter(prefix="/ml", tags=["ML"])
@@ -52,6 +54,12 @@ class MLSuggestionResponse(BaseModel):
     metadata: SuggestionMetadata
 
 
+class MLPlanNowResponse(BaseModel):
+    target_datetime: datetime
+    planned: List[SpaceProductRecommendation]
+    skipped: List[str]  # Códigos sin recomendación (p. ej. modelo sin candidatos)
+
+
 @router.post("/suggest", response_model=MLSuggestionResponse)
 async def suggest_replenishment(
     request: MLSuggestionRequest,
@@ -77,16 +85,21 @@ async def suggest_replenishment(
             detail="target_datetime debe incluir zona horaria (ej: 2026-09-29T10:00:00-05:00 o 2026-09-29T15:00:00+00:00)"
         )
     
-    # Normalizar a UTC para procesamiento interno
-    target_dt = target_dt.astimezone(timezone.utc)
-    
+    return await _suggest_for_datetime(db, target_dt.astimezone(timezone.utc))
+
+
+async def _suggest_for_datetime(db: AsyncSession, target_dt: datetime) -> MLSuggestionResponse:
+    """Calcula recomendaciones sin modificar el mostrador."""
     # 1. Obtener datos base
     productos = await ProductoService.get_all(db, activo=True)
     producto_ids = [p.id for p in productos]
     producto_map = {p.id: p.nombre for p in productos}
     
     espacios = await EspacioService.get_all(db)
-    free_spaces = [e for e in espacios if e.estado == EstadoEspacio.libre]
+    free_spaces = [
+        e for e in espacios
+        if e.estado == EstadoEspacio.libre and e.producto_actual_id is None
+    ]
     free_space_ids = [e.id for e in free_spaces]
     
     if not free_spaces or not productos:
@@ -103,7 +116,7 @@ async def suggest_replenishment(
                 productos_recommended=0,
                 max_per_product=0,
                 model_version="v1.0",
-                generated_at=datetime.utcnow()
+                generated_at=datetime.now(timezone.utc)
             )
         )
     
@@ -184,6 +197,41 @@ async def suggest_replenishment(
             model_version="v1.0",
             generated_at=datetime.now(timezone.utc)
         )
+    )
+
+
+@router.post("/plan-now", response_model=MLPlanNowResponse)
+async def plan_replenishment_now(db: AsyncSession = Depends(get_db)):
+    """Planifica ahora los espacios vacíos; no ocupa ni registra movimientos."""
+    target_dt = datetime.now(ZoneInfo("America/Lima"))
+    try:
+        # Bloquear en orden estable para serializar ejecuciones automáticas.
+        # Mantener los bloqueos durante el cálculo y todas las asignaciones.
+        await db.execute(select(Espacio.id).order_by(Espacio.id).with_for_update())
+        suggestion = await _suggest_for_datetime(db, target_dt.astimezone(timezone.utc))
+        for item in suggestion.recommendations:
+            await EspacioService.planificar(db, item.espacio_id, item.producto_id, commit=False)
+
+        planned_codes = {item.espacio_codigo for item in suggestion.recommendations}
+        espacios = await EspacioService.get_all(db)
+        skipped = [
+            e.codigo for e in espacios
+            if e.estado == EstadoEspacio.libre
+            and e.producto_actual_id is None
+            and e.codigo not in planned_codes
+        ]
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
+
+    return MLPlanNowResponse(
+        target_datetime=target_dt,
+        planned=suggestion.recommendations,
+        skipped=skipped,
     )
 
 

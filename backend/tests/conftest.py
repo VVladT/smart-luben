@@ -11,8 +11,9 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from app.main import app
 from app.database import Base, get_db
 
-TEST_DATABASE_URL = (
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/smart_luben_test"
+TEST_DATABASE_URL = os.getenv(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/smart_luben_test",
 )
 
 engine_test = create_async_engine(

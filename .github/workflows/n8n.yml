@@ -1,0 +1,105 @@
+name: n8n Workflow CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "n8n/**"
+      - "docker-compose.yml"
+      - ".github/workflows/n8n.yml"
+  push:
+    branches: [main]
+    paths:
+      - "n8n/**"
+      - "docker-compose.yml"
+      - ".github/workflows/n8n.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Validate n8n workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate workflow ID and triggers
+        run: node n8n/scripts/validate-workflow.js
+      - name: Check deployment script syntax
+        run: bash -n n8n/scripts/deploy.sh
+
+  deploy:
+    name: Deploy n8n workflow
+    runs-on: self-hosted
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore .env
+        run: |
+          if [ -f ../.env ]; then
+            cp ../.env .env
+          elif [ ! -f .env ]; then
+            echo "::error::Falta .env: ni ../.env ni ./.env existen."
+            exit 1
+          fi
+      - name: Restore garage.toml
+        run: |
+          if [ -f ../garage.toml ]; then
+            cp ../garage.toml docker/garage.toml
+          fi
+          if [ ! -f docker/garage.toml ]; then
+            echo "::error::Falta docker/garage.toml para el Compose de producción."
+            exit 1
+          fi
+      - name: Validate Compose configuration
+        run: |
+          docker compose config -q
+      - name: Start n8n (including first deploy)
+        run: |
+          docker compose up -d n8n
+          for attempt in $(seq 1 30); do
+            if docker compose exec -T n8n wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::n8n no inició correctamente. Revisa docker compose logs n8n."
+          exit 1
+      - name: Check owner registration
+        id: owner
+        run: |
+          state=$(docker compose exec -T n8n node -e '
+            fetch("http://127.0.0.1:5678/rest/settings")
+              .then(response => { if (!response.ok) throw new Error(`HTTP ${response.status}`); return response.json(); })
+              .then(settings => {
+                const needsSetup = settings.data?.userManagement?.showSetupOnFirstLoad;
+                if (typeof needsSetup !== "boolean") throw new Error("No se pudo comprobar el estado del propietario");
+                console.log(needsSetup ? "setup-needed" : "ready");
+              })
+              .catch(error => { console.error(error); process.exitCode = 1; });
+          ')
+          if [ "$state" = "setup-needed" ]; then
+            echo "::notice::n8n ya está levantado. Crea el usuario propietario desde la URL pública y relanza este workflow con workflow_dispatch."
+            echo "n8n está iniciado, pero falta crear el usuario propietario. Después usa Actions → n8n Workflow CI/CD → Run workflow para importar y publicar el JSON." >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ "$state" = "ready" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Estado de registro inesperado en n8n."
+            exit 1
+          fi
+      - name: Backup, import and publish workflow
+        if: steps.owner.outputs.ready == 'true'
+        env:
+          BACKUP_NAME: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: bash n8n/scripts/deploy.sh
+      - name: Check n8n is running
+        run: |
+          docker compose ps n8n
+          docker compose exec -T n8n wget -qO- http://127.0.0.1:5678/healthz

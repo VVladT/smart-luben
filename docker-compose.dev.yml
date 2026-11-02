@@ -32,6 +32,7 @@ services:
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
       S3_SECRET_KEY: ${S3_SECRET_KEY}
       S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:3900}
+      N8N_EMPTY_COUNTER_WEBHOOK_URL: ${N8N_EMPTY_COUNTER_WEBHOOK_URL:-}
     volumes:
       - ./backend:/app  # hot reload
       - ./ar/assets:/ar-assets:ro  # GLBs para scripts/upload_default_models.py
@@ -91,6 +92,28 @@ services:
       backend:
         condition: service_started
 
+  n8n:
+    image: n8nio/n8n:2.45.7
+    container_name: smart-luben-n8n-dev
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Configura N8N_ENCRYPTION_KEY en .env}
+      N8N_PATH: /n8n/
+      N8N_EDITOR_BASE_URL: ${N8N_PUBLIC_URL:-http://localhost/n8n/}
+      N8N_WEBHOOK_URL: ${N8N_PUBLIC_URL:-http://localhost/n8n/}
+      N8N_PROXY_HOPS: ${N8N_PROXY_HOPS:-1}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_SECURE_COOKIE: "false" # Solo para desarrollo HTTP; mantener activo en producción HTTPS.
+      GENERIC_TIMEZONE: America/Lima
+      TZ: America/Lima
+    volumes:
+      - n8n_data_dev:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+    expose:
+      - "5678"
+    depends_on:
+      backend:
+        condition: service_started
+
   # Punto único como en prod: :80 -> frontend /api /ar /s3
   # (los puertos sueltos siguen disponibles en paralelo)
   gateway:
@@ -104,8 +127,10 @@ services:
       - frontend
       - backend
       - ar
+      - n8n
 
 volumes:
   postgres_data_dev:
   garage_meta_dev:
   garage_data_dev:
+  n8n_data_dev:

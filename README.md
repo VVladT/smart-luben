@@ -41,6 +41,29 @@ make frontend
 
 Frontend: http://localhost:4200
 
+## Planificación automática (integración n8n)
+
+La API expone `POST /api/ml/plan-now` **sin body**. n8n puede invocarlo desde
+un disparador horario o dentro de una franja permitida cuando detecte espacios
+vacíos. El backend usa la fecha/hora actual de Trujillo (`America/Lima`) y
+devuelve `target_datetime` (ISO 8601), `planned` (asignaciones con IDs, códigos,
+producto y puntajes) y `skipped` (códigos de espacios vacíos sin recomendación).
+
+Solo se asignan productos a espacios libres **sin plan previo**. Las llamadas
+repetidas no sustituyen planes pendientes; los espacios ocupados no se alteran.
+Si falla una asignación, se revierte todo el lote (conflictos: HTTP 409). La
+operación no llama a `reponer` ni registra movimientos: la confirmación física
+es independiente. `POST /api/ml/suggest` sigue disponible para consultar
+recomendaciones sin guardar planes (requiere `target_datetime` con zona horaria).
+
+El workflow n8n, sus disparadores y notificaciones todavía no están desplegados.
+La autenticación de escrituras sigue siendo una deuda técnica del MVP.
+
+Para instalar el servicio n8n y crear el workflow, consulta [`n8n/README.md`](n8n/README.md).
+El backend puede emitir un evento tras cada liberación cuando se configura
+`N8N_EMPTY_COUNTER_WEBHOOK_URL`; la comprobación de mostrador vacío y horario
+de operación corresponde al futuro workflow de n8n.
+
 ## Objetos 3D e imágenes (Garage S3)
 
 Los modelos `.glb` e imágenes se guardan en Garage (S3-compatible).

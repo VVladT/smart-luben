@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # Endpoint S3 alcanzable desde navegador/AR (firma de presigned GET).
     # Dev: http://localhost:3900 (o IP LAN si incluye móvil) | Prod: https://tu-dominio/s3
     s3_public_endpoint: str = "http://localhost:3900"
+    # Webhook interno de n8n; vacío desactiva la notificación.
+    n8n_empty_counter_webhook_url: str | None = None
 
     model_config = SettingsConfigDict(
         case_sensitive=False,

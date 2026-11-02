@@ -1,4 +1,4 @@
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
@@ -152,7 +152,9 @@ class EspacioService:
         return espacio
 
     @staticmethod
-    async def planificar(db: AsyncSession, espacio_id: int, producto_id: int) -> Espacio:
+    async def planificar(
+        db: AsyncSession, espacio_id: int, producto_id: int, *, commit: bool = True
+    ) -> Espacio:
         """Asigna un producto a un espacio libre SIN ocuparlo (situación: pendiente).
         No registra movimiento: nada se movió físicamente. La ocupación explícita
         (futura integración IoT) se hace con reponer()."""
@@ -160,8 +162,8 @@ class EspacioService:
         if not espacio:
             raise ValueError("Espacio no encontrado")
 
-        if espacio.estado != EstadoEspacio.libre:
-            raise ValueError("Solo se puede planificar un espacio libre")
+        if espacio.estado != EstadoEspacio.libre or espacio.producto_actual_id is not None:
+            raise ValueError("Solo se puede planificar un espacio libre sin plan")
 
         producto = await ProductoService.get_by_id(db, producto_id)
         if not producto:
@@ -170,8 +172,22 @@ class EspacioService:
         if not producto.activo:
             raise ValueError("El producto no está activo")
 
-        espacio.producto_actual_id = producto_id
-        await db.commit()
+        # La condición se evalúa en la BD: evita sobrescribir un plan creado
+        # entre la lectura y la escritura (por ejemplo, por otra ejecución).
+        result = await db.execute(
+            update(Espacio)
+            .where(
+                Espacio.id == espacio_id,
+                Espacio.estado == EstadoEspacio.libre,
+                Espacio.producto_actual_id.is_(None),
+            )
+            .values(producto_actual_id=producto_id)
+        )
+        if result.rowcount != 1:
+            raise ValueError("El espacio ya no está libre sin plan")
+
+        if commit:
+            await db.commit()
         await db.refresh(espacio)
         return espacio
 

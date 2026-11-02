@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
@@ -15,6 +15,7 @@ from app.schemas import (
     MovimientoDetalleResponse,
 )
 from app.models import TipoMovimiento
+from app.services.n8n_webhook import notify_space_released
 
 
 router = APIRouter(prefix="/espacios", tags=["espacios"])
@@ -160,16 +161,28 @@ async def reponer_espacio(
     summary="Liberar espacio",
     description="Libera un espacio ocupado. Cambia el estado a LIBRE y registra el movimiento de salida."
 )
-async def liberar_espacio(espacio_id: int, db: AsyncSession = Depends(get_db)):
+async def liberar_espacio(
+    espacio_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     try:
         movimiento = await MovimientoService.liberar(db, espacio_id)
         espacio = await EspacioService.get_by_id(db, espacio_id)
-        producto = await EspacioService.get_by_id(db, espacio_id)  # We need the product that was there
-        
-        # Get the product from the movement
         from app.services import ProductoService
         producto_obj = await ProductoService.get_by_id(db, movimiento.producto_id)
-        
+
+        background_tasks.add_task(
+            notify_space_released,
+            {
+                "event": "space_released",
+                "movement_id": movimiento.id,
+                "space_id": espacio_id,
+                "space_code": espacio.codigo,
+                "occurred_at": movimiento.fecha_hora.isoformat(),
+            },
+        )
+
         return MovimientoDetalleResponse(
             id=movimiento.id,
             espacio_id=movimiento.espacio_id,
