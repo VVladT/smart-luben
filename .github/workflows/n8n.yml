@@ -102,4 +102,12 @@ jobs:
       - name: Check n8n is running
         run: |
           docker compose ps n8n
-          docker compose exec -T n8n wget -qO- http://127.0.0.1:5678/healthz
+          for attempt in $(seq 1 30); do
+            if docker compose exec -T n8n wget -qO- http://127.0.0.1:5678/healthz >/dev/null 2>&1; then
+              echo "n8n listo (intento $attempt)"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::n8n no respondió a /healthz tras reiniciarse. Revisa docker compose logs n8n."
+          exit 1
