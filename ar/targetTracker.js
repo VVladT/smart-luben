@@ -5,32 +5,21 @@ import { configManager } from './configManager.js';
 import { modelRegistry } from './modelRegistry.js';
 import * as THREE from 'three';
 
-// Tracking stabilization tuning (module defaults, overridable per instance for tests)
+// Pose smoothing tuning (module defaults, overridable per instance for tests)
 const DEFAULT_LOST_GRACE_MS = 1200;    // keep last pose visible this long after imagelost
-const DEFAULT_STABLE_MS = 300;         // pose must hold still this long before showing
-const DEFAULT_POS_EPSILON = 0.02;      // meters
-const DEFAULT_ROT_EPSILON = 0.035;     // radians (~2 deg)
-const DEFAULT_BIG_MOVE_POS = 0.05;     // above this vs frozen pose -> hide immediately
-const DEFAULT_BIG_MOVE_ROT = 0.09;     // radians (~5 deg)
-const DEFAULT_PENDING_TIMEOUT_MS = 3000; // never-stable fallback: add anyway
+const DEFAULT_SMOOTHING_MS = 90;       // exponential pose smoothing time constant
 
 export class TargetTracker {
   #activeInstances = new Map();    // espacio_codigo -> THREE.Group (active instance)
   #currentDetails = new Map();     // espacio_codigo -> last detail (for updates)
   #generations = new Map();        // espacio_codigo -> int (invalidates stale async work)
   #pendingRemoval = new Map();    // espacio_codigo -> timeout id (deferred hide)
-  #pendingAdd = new Map();        // espacio_codigo -> pending stabilization state
   #scene = null;
   #configManager = configManager;
   #modelRegistry = modelRegistry;
   #unsubscribeConfig = null;
   #lostGraceMs = DEFAULT_LOST_GRACE_MS;
-  #stableMs = DEFAULT_STABLE_MS;
-  #posEpsilon = DEFAULT_POS_EPSILON;
-  #rotEpsilon = DEFAULT_ROT_EPSILON;
-  #bigMovePos = DEFAULT_BIG_MOVE_POS;
-  #bigMoveRot = DEFAULT_BIG_MOVE_ROT;
-  #pendingTimeoutMs = DEFAULT_PENDING_TIMEOUT_MS;
+  #smoothingMs = DEFAULT_SMOOTHING_MS;
   #ultimasAsignaciones = new Map(); // última snapshot para diff de hot-swap
   #ultimasVersiones = new Map(); // productoId -> version (hot-swap de datos)
   #desvaneciendo = new Map(); // espacioCode -> { instance, inicio } (fade-out)
@@ -147,15 +136,10 @@ export class TargetTracker {
     this.#rafId = requestAnimationFrame(paso);
   }
 
-  // Override stabilization tuning (used by tests to shrink real-time waits)
+  // Override smoothing and lost-target grace period for tests/device tuning.
   setTuning(partial = {}) {
     if (partial.lostGraceMs !== undefined) this.#lostGraceMs = partial.lostGraceMs;
-    if (partial.stableMs !== undefined) this.#stableMs = partial.stableMs;
-    if (partial.posEpsilon !== undefined) this.#posEpsilon = partial.posEpsilon;
-    if (partial.rotEpsilon !== undefined) this.#rotEpsilon = partial.rotEpsilon;
-    if (partial.bigMovePos !== undefined) this.#bigMovePos = partial.bigMovePos;
-    if (partial.bigMoveRot !== undefined) this.#bigMoveRot = partial.bigMoveRot;
-    if (partial.pendingTimeoutMs !== undefined) this.#pendingTimeoutMs = partial.pendingTimeoutMs;
+    if (partial.smoothingMs !== undefined) this.#smoothingMs = partial.smoothingMs;
   }
 
   #cancelPendingRemoval(espacioCode) {
@@ -166,21 +150,12 @@ export class TargetTracker {
     }
   }
 
-  #clearPendingAdd(espacioCode) {
-    const pending = this.#pendingAdd.get(espacioCode);
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.#pendingAdd.delete(espacioCode);
-    }
-  }
-
   #scheduleRemoval(espacioCode) {
     this.#cancelPendingRemoval(espacioCode);
     const id = setTimeout(() => {
       this.#pendingRemoval.delete(espacioCode);
       this.#removeInstance(espacioCode);
       this.#currentDetails.delete(espacioCode);
-      this.#clearPendingAdd(espacioCode);
     }, this.#lostGraceMs);
     this.#pendingRemoval.set(espacioCode, id);
   }
@@ -194,12 +169,6 @@ export class TargetTracker {
 
   #quat(r) {
     return new THREE.Quaternion(r.x, r.y, r.z, r.w);
-  }
-
-  // True when the new pose moved far from the frozen instance (stale pose: hide now)
-  #poseDeltaBig(instance, detail) {
-    return instance.position.distanceTo(detail.position) > this.#bigMovePos ||
-      instance.quaternion.angleTo(detail.rotation) > this.#bigMoveRot;
   }
 
   #onConfigChange(snapshot) {
@@ -255,40 +224,9 @@ export class TargetTracker {
     // Tracking is alive again: cancel a scheduled hide
     this.#cancelPendingRemoval(espacioCode);
 
-    // Warm the cache now so the model is ready when stability confirms
-    modelRegistry.getModel(producto).catch(() => {});
-
-    const active = this.#activeInstances.get(espacioCode);
-    if (active && this.#poseDeltaBig(active, detail)) {
-      // Moved a lot: drop the stale frozen pose now, stay hidden until stable
-      this.#removeInstance(espacioCode);
-    }
-
-    // Re-found while stabilizing (flicker): refresh pose/product but keep the
-    // ORIGINAL deadline — restarting the forced-add timer on every found
-    // postpones it forever and the model never appears.
-    const existing = this.#pendingAdd.get(espacioCode);
-    if (existing) {
-      existing.detail = detail;
-      existing.producto = producto;
-      existing.gen = gen;
-      existing.stableSince = null;
-      existing.lastPos.copy(this.#vec(detail.position));
-      existing.lastQuat.copy(this.#quat(detail.rotation));
-    } else {
-      // First found: start pending add with a hard deadline; nothing shown yet
-      const state = {
-        detail,
-        producto,
-        gen,
-        stableSince: null,
-        lastPos: this.#vec(detail.position),
-        lastQuat: this.#quat(detail.rotation),
-        timer: setTimeout(() => this.#confirmPendingAdd(espacioCode, true), this.#pendingTimeoutMs),
-      };
-      this.#pendingAdd.set(espacioCode, state);
-    }
     this.#currentDetails.set(espacioCode, detail);
+    // Load as soon as the target is found; pose stability is not a prerequisite.
+    this.#materialize(espacioCode, detail, producto, gen);
 
     messageBridge.emit(MessageType.AR_TARGET_FOUND, {
       espacio_codigo: espacioCode,
@@ -315,14 +253,6 @@ export class TargetTracker {
   onTargetUpdated({ detail }) {
     const espacioCode = detail.name;
     this.#currentDetails.set(espacioCode, detail);
-
-    const pending = this.#pendingAdd.get(espacioCode);
-    if (pending) {
-      // While stabilizing, keep the frozen pose (if any) — no jitter on screen
-      this.#trackPendingStability(espacioCode, pending, detail);
-      return;
-    }
-
     const instance = this.#activeInstances.get(espacioCode);
     if (!instance) return;
 
@@ -331,56 +261,30 @@ export class TargetTracker {
 
     const productoId = this.#configManager.assignments.get(espacioCode);
     const producto = this.#configManager.products.get(productoId);
-    this.#applyTransform(instance, detail, producto);
+    const now = performance.now();
+    const previous = instance.userData._lastPoseUpdate ?? now;
+    const elapsed = Math.max(0, now - previous);
+    instance.userData._lastPoseUpdate = now;
+    const alpha = this.#smoothingMs <= 0 ? 1 : 1 - Math.exp(-elapsed / this.#smoothingMs);
+    this.#applyTransform(instance, detail, producto, alpha);
   }
 
-  #trackPendingStability(espacioCode, pending, detail) {
-    const now = Date.now();
-    const curPos = this.#vec(detail.position);
-    const curQuat = this.#quat(detail.rotation);
-    const posDelta = curPos.distanceTo(pending.lastPos);
-    const rotDelta = curQuat.angleTo(pending.lastQuat);
-    pending.lastPos.copy(curPos);
-    pending.lastQuat.copy(curQuat);
-    pending.detail = detail;
-
-    if (posDelta <= this.#posEpsilon && rotDelta <= this.#rotEpsilon) {
-      if (pending.stableSince === null) {
-        pending.stableSince = now;
-      } else if (now - pending.stableSince >= this.#stableMs) {
-        this.#confirmPendingAdd(espacioCode, false);
-      }
-    } else {
-      pending.stableSince = null;
-    }
-  }
-
-  // Materialize a pending add. forced=true when the stabilization timeout fired:
-  // add anyway so the model never stays invisible forever on marginal tracking.
-  async #confirmPendingAdd(espacioCode, forced) {
-    const pending = this.#pendingAdd.get(espacioCode);
-    if (!pending) return;
-    this.#clearPendingAdd(espacioCode);
-    const { detail, producto, gen } = pending;
-
+  // Materialize immediately once the model is available; no pose-stability gate.
+  async #materialize(espacioCode, detail, producto, gen) {
     if (gen !== this.#generations.get(espacioCode)) return;
 
-    // El espacio pudo ocuparse mientras se estabilizaba: no materializar.
-    // (Sin este gate, el timer forzado re-agrega el modelo tras cada fade.)
+    // The space may have become occupied while the model was loading.
     if (!this.debeMostrar(espacioCode)) return;
-
-    if (forced) {
-      console.log('[TargetTracker] Pending add forced (never stabilized)', espacioCode);
-    }
 
     try {
       const model = await modelRegistry.getModel(producto);
       if (gen !== this.#generations.get(espacioCode)) return;
+      if (!this.debeMostrar(espacioCode)) return;
       const instance = model.clone(true);
       this.#removeInstance(espacioCode);
       this.#activeInstances.set(espacioCode, instance);
-      this.#currentDetails.set(espacioCode, detail);
-      this.#applyTransform(instance, detail, producto);
+      const latestDetail = this.#currentDetails.get(espacioCode) || detail;
+      this.#applyTransform(instance, latestDetail, producto);
       this.#scene.add(instance);
 
       messageBridge.emit(MessageType.AR_MODEL_LOADED, {
@@ -388,13 +292,13 @@ export class TargetTracker {
         producto_id: producto.id
       });
     } catch (err) {
-      console.error('[TargetTracker] Pending add failed:', err);
+      console.error('[TargetTracker] Model load failed:', err);
       messageBridge.emit(MessageType.AR_MODEL_ERROR, {
         espacio_codigo: espacioCode,
         producto_id: producto.id,
         error: err.message
       });
-      this.#tryFallback(espacioCode, detail, gen);
+      this.#tryFallback(espacioCode, this.#currentDetails.get(espacioCode) || detail, gen);
     }
   }
 
@@ -406,8 +310,6 @@ export class TargetTracker {
       // Defer the hide: a flicker re-found cancels it before anything blinks
       this.#scheduleRemoval(espacioCode);
     }
-    // A pending add with no instance survives until its own timeout (brief flicker
-    // while stabilizing); an expired grace already cleared everything.
     this.#currentDetails.delete(espacioCode);
     messageBridge.emit(MessageType.AR_TARGET_LOST, { espacio_codigo: espacioCode });
   }
@@ -421,7 +323,6 @@ export class TargetTracker {
     }
     const gen = this.#bumpGeneration(espacioCode);
     this.#cancelPendingRemoval(espacioCode);
-    this.#clearPendingAdd(espacioCode);
     const detail = this.#currentDetails.get(espacioCode);
     if (!detail) return;
 
@@ -451,7 +352,7 @@ export class TargetTracker {
     }
   }
 
-  #applyTransform(instance, detail, producto) {
+  #applyTransform(instance, detail, producto, smoothingAlpha = 1) {
     const trackScale = detail.scale ?? 1;
     const modelScale = producto?.scale || 1;
 
@@ -465,8 +366,8 @@ export class TargetTracker {
       )
     );
 
-    instance.position.copy(detail.position);
-    instance.quaternion.copy(detail.rotation).multiply(offset);
+    const targetPosition = this.#vec(detail.position);
+    const targetQuaternion = this.#quat(detail.rotation).multiply(offset);
     const s = trackScale * modelScale;
     instance.scale.set(s, s, s);
 
@@ -476,9 +377,11 @@ export class TargetTracker {
       if (yOffset > 0) {
         const lift = new THREE.Vector3(0, yOffset * trackScale, 0);
         lift.applyQuaternion(detail.rotation);
-        instance.position.add(lift);
+        targetPosition.add(lift);
       }
     }
+    instance.position.lerp(targetPosition, smoothingAlpha);
+    instance.quaternion.slerp(targetQuaternion, smoothingAlpha);
   }
 
   // Get current active instance for a space
@@ -496,8 +399,6 @@ export class TargetTracker {
     this.#desvaneciendo.clear();
     this.#pendingRemoval.forEach(id => clearTimeout(id));
     this.#pendingRemoval.clear();
-    this.#pendingAdd.forEach(p => clearTimeout(p.timer));
-    this.#pendingAdd.clear();
     this.#activeInstances.forEach(instance => this.#scene?.remove(instance));
     this.#activeInstances.clear();
     this.#currentDetails.clear();

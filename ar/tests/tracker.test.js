@@ -47,7 +47,7 @@ describe('targetTracker', () => {
   });
 
   it('setTuning acepta parciales', () => {
-    targetTracker.setTuning({ stableMs: 10, pendingTimeoutMs: 50 });
+    targetTracker.setTuning({ smoothingMs: 90, lostGraceMs: 50 });
     targetTracker.setTuning({});
   });
 });
