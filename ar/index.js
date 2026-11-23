@@ -11,6 +11,33 @@ THREE.ColorManagement.enabled = false;
 let scene = null;
 let camera = null;
 let renderer = null;
+let modelPreloadScheduled = false;
+let pendingPreloadSnapshot = null;
+
+const scheduleAssignedModelPreload = (snapshot) => {
+  pendingPreloadSnapshot = snapshot;
+  if (modelPreloadScheduled || snapshot.products.size === 0) return;
+  modelPreloadScheduled = true;
+
+  const preload = () => {
+    modelPreloadScheduled = false;
+    const latestSnapshot = pendingPreloadSnapshot;
+    if (!latestSnapshot) return;
+    const assignedIds = new Set(latestSnapshot.assignments.values());
+    const assignedProducts = [...latestSnapshot.products]
+      .filter(([id]) => assignedIds.has(id))
+      .map(([, product]) => product);
+    modelRegistry.preload(assignedProducts).catch(console.error);
+  };
+
+  // Let the camera/tracking pipeline settle first; imagefound requests are
+  // foreground and can jump ahead of preloads still waiting in the queue.
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(preload, { timeout: 4000 });
+  } else {
+    window.setTimeout(preload, 1200);
+  }
+};
 
 const initXrScene = ({ scene: xrScene, camera: xrCamera, renderer: xrRenderer }) => {
   scene = xrScene;
@@ -49,12 +76,9 @@ const initXrScene = ({ scene: xrScene, camera: xrCamera, renderer: xrRenderer })
 
   camera.position.set(0, 0, 0);
 
-  // Preload models once config is ready
-  configManager.onChange(snapshot => {
-    if (snapshot.products.size > 0) {
-      modelRegistry.preload(Array.from(snapshot.products.values())).catch(console.error);
-    }
-  });
+  // Preload only assigned models in the background, after XR has started.
+  configManager.onChange(scheduleAssignedModelPreload);
+  scheduleAssignedModelPreload(configManager.getSnapshot());
 
   console.log('[AR] Scene initialized');
 };

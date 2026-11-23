@@ -9,8 +9,14 @@ THREE.ColorManagement.enabled = false;
 export class ModelRegistry {
   #loaded = new Map();        // producto_id -> THREE.Group (cached master)
   #loading = new Map();       // producto_id -> Promise (dedupe concurrent loads)
+  #queued = new Map();        // producto_id -> queued load (foreground can reprioritize)
+  #queue = [];
+  #activeLoads = 0;
+  #loadSequence = 0;
   #fallbackModel = null;      // Local placeholder
   #fallbackLoading = null;
+
+  static MAX_CONCURRENT_LOADS = 1;
 
   constructor() {
     // Preload fallback
@@ -63,20 +69,67 @@ export class ModelRegistry {
     });
   }
 
-  async getModel(producto) {
+  async getModel(producto, { priority = 'foreground' } = {}) {
     const cached = this.#loaded.get(producto.id);
     if (cached && cached.userData.version === producto.version) {
       return cached;
     }
 
-    // Dedupe concurrent loads
+    // Dedupe concurrent loads. If a visible target requests a model that is
+    // still queued for preloading, promote it ahead of background work.
     if (this.#loading.has(producto.id)) {
+      if (priority === 'foreground') {
+        const queued = this.#queued.get(producto.id);
+        if (queued) {
+          queued.priority = 0;
+          this.#sortQueue();
+          this.#pumpQueue();
+        }
+      }
       return this.#loading.get(producto.id);
     }
 
-    const promise = this.#loadModel(producto);
+    let resolveLoad;
+    let rejectLoad;
+    const promise = new Promise((resolve, reject) => {
+      resolveLoad = resolve;
+      rejectLoad = reject;
+    });
+    const task = {
+      producto,
+      promise,
+      resolve: resolveLoad,
+      reject: rejectLoad,
+      priority: priority === 'background' ? 1 : 0,
+      sequence: this.#loadSequence++,
+    };
+    this.#queue.push(task);
+    this.#queued.set(producto.id, task);
     this.#loading.set(producto.id, promise);
+    this.#sortQueue();
+    this.#pumpQueue();
     return promise;
+  }
+
+  #sortQueue() {
+    this.#queue.sort((a, b) => a.priority - b.priority || a.sequence - b.sequence);
+  }
+
+  #pumpQueue() {
+    while (this.#activeLoads < ModelRegistry.MAX_CONCURRENT_LOADS && this.#queue.length) {
+      const task = this.#queue.shift();
+      const id = task.producto.id;
+      this.#queued.delete(id);
+      this.#activeLoads += 1;
+
+      this.#loadModel(task.producto)
+        .then(task.resolve, task.reject)
+        .finally(() => {
+          if (this.#loading.get(id) === task.promise) this.#loading.delete(id);
+          this.#activeLoads -= 1;
+          this.#pumpQueue();
+        });
+    }
   }
 
   async #loadModel(producto) {
@@ -99,12 +152,10 @@ export class ModelRegistry {
       );
 
       this.#loaded.set(producto.id, model);
-      this.#loading.delete(producto.id);
       console.log('[ModelRegistry] Loaded:', producto.id, 'height:', model.userData.yOffset.toFixed(2));
       return model;
     } catch (err) {
       console.error('[ModelRegistry] Failed to load', producto.id, ':', err.message);
-      this.#loading.delete(producto.id);
       return this.getFallback();
     }
   }
@@ -127,9 +178,9 @@ export class ModelRegistry {
     this.#loading.delete(productoId);
   }
 
-  // Preload multiple products
+  // Queue preloads one at a time behind visible-target requests.
   async preload(productos) {
-    await Promise.all(productos.map(p => this.getModel(p).catch(err => {
+    await Promise.all(productos.map(p => this.getModel(p, { priority: 'background' }).catch(err => {
       console.warn('[ModelRegistry] Preload failed for', p.id, err.message);
     })));
   }
